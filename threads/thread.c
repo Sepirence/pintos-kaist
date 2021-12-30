@@ -27,6 +27,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+static struct list sleep_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -108,6 +109,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -587,4 +589,36 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+// User defined functions
+void
+user_timer_sleep(int64_t ticks){
+
+	struct thread *t = thread_current(); // take current thread
+	t->sleep_ticks = ticks;
+	list_push_back(&sleep_list,&t->elem);
+	thread_block(); 
+}
+
+void
+user_timer_wakeup(int64_t ticks){
+	// struct thread *t = thread_current(); // take current thread
+	struct list_elem *e;
+
+	for (e = list_begin(&sleep_list); e != list_end(&sleep_list);)
+	{
+		struct thread *t = list_entry(e,struct thread, elem);
+		
+		if (t->sleep_ticks <= ticks) 
+		{
+			e = list_remove(e);
+			list_push_back(&ready_list, &t->elem);
+			
+		}
+		else
+			e = list_next(e);
+	}
+
+
 }
