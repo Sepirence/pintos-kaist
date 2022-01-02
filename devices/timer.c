@@ -97,7 +97,7 @@ timer_sleep (int64_t ticks) {
 	enum intr_level old_level;
 	old_level = intr_disable ();
 
-	user_timer_sleep(ticks);
+	user_timer_sleep(start + ticks);
 
 	intr_set_level (old_level);
 	// while (timer_elapsed (start) < ticks)

@@ -208,6 +208,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	thread_yield();
 
 	return tid;
 }
@@ -242,7 +243,9 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	int *type = 1;
+	list_insert_ordered(&ready_list, &t->elem, compare_function, type); // 1 is priority
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -304,8 +307,13 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
+
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	{
+		//list_push_back (&ready_list, &curr->elem);
+		int *type = 1;
+		list_insert_ordered(&ready_list, &curr->elem, compare_function, type); // 1 is priority
+	}
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -313,7 +321,12 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	struct thread *curr = thread_current();
+
+	curr->priority = new_priority;
+	// 레디 리스트를 맨 앞 놈을 우선순위인 놈을 실행
+	thread_yield();
+
 }
 
 /* Returns the current thread's priority. */
@@ -591,7 +604,9 @@ allocate_tid (void) {
 	return tid;
 }
 
+///////////////////////////////////////////////////////////////////////
 // User defined functions
+///////////////////////////////////////////////////////////////////////
 void
 user_timer_sleep(int64_t ticks){
 
@@ -613,12 +628,21 @@ user_timer_wakeup(int64_t ticks){
 		if (t->sleep_ticks <= ticks) 
 		{
 			e = list_remove(e);
-			list_push_back(&ready_list, &t->elem);
-			
+			int *type = 1;
+			list_insert_ordered(&ready_list, &t->elem, compare_function, type); // 1 is priority
 		}
 		else
 			e = list_next(e);
 	}
+}
 
+bool
+compare_function(const struct list_elem *a, const struct list_elem *b, void *aux){
+	if ((int)(aux) == 1) // priorty
+ 	{
+		struct thread *t_a = list_entry(a,struct thread, elem);
+		struct thread *t_b = list_entry(b,struct thread, elem);
 
+		return t_a->priority > t_b->priority; // high priority less height
+	}
 }

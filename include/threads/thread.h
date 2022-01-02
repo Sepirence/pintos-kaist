@@ -146,6 +146,7 @@ void do_iret (struct intr_frame *tf);
 
 void user_timer_sleep(int64_t ticks);
 void user_timer_wakeup(int64_t ticks);
+bool compare_function(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 
 
