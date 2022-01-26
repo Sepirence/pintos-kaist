@@ -28,6 +28,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+typedef int64_t fp;
+
+#define F 1<<14
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -94,8 +98,25 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
-	int64_t sleep_ticks;
+	
+	
+	/// user_addition 
 
+	int64_t sleep_ticks;
+	int original_priority;
+
+	struct list donate_list;
+	struct list_elem donate_elem;
+	struct lock *waiting_lock;
+
+	// Advanced Scheduler
+	int nice;
+	fp recent_cpu;
+
+
+	///
+
+	
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -144,9 +165,42 @@ int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 
+/* States in a thread's life cycle. */
+enum cmp_fun_num {
+	PRIORITY,
+	SEMA,
+	DONATE
+};
+
 void user_timer_sleep(int64_t ticks);
 void user_timer_wakeup(int64_t ticks);
 bool compare_function(const struct list_elem *a, const struct list_elem *b, void *aux);
+
+void cpu_increment (void);
+void cpu_recalculation(void);
+void calculating_load_avg(void);
+void priority_calculation(void);
+
+fp int_to_fp(int n);
+int fp_to_int_zero(fp x);
+int fp_to_int_near(fp x);
+fp add_fp(fp x, fp y);
+
+fp sub_fp(fp x, fp y);
+fp add_int(fp x, int n);
+fp sub_int(fp x, int n);
+fp mul_fp(fp x, fp y);
+fp mul_int(fp x, int n);
+fp div_fp(fp x, fp y);
+fp div_int(fp x, int n);
+
+
+
+
+
+
+
+
 
 
 
