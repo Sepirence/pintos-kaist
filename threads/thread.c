@@ -859,3 +859,20 @@ priority_calculation(void){
 	curr->priority = new_priority;
 	curr->original_priority = new_priority;
 }
+
+void check_preemption(void)
+{
+	if (list_empty(&ready_list))
+	{
+		return;
+	}
+    
+	int curr_priority = thread_current()->priority;
+	struct list_elem *e= list_begin(&ready_list);
+	struct thread *t = list_entry(e, struct thread, elem);
+    
+	if (curr_priority < t->priority)
+	{
+		thread_yield();
+	}
+}

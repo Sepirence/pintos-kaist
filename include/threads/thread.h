@@ -194,7 +194,7 @@ fp mul_int(fp x, int n);
 fp div_fp(fp x, fp y);
 fp div_int(fp x, int n);
 
-
+void check_preemption(void);
 
 
 
