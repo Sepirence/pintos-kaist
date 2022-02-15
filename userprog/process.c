@@ -49,9 +49,18 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+	
+	////////////////////////////////////////////////////
+	char *copy_string[30];
+	strlcpy(copy_string,file_name,strlen(file_name)+1);
 
+	char *save_ptr;
+
+	strtok_r(copy_string," ", &save_ptr);
+	///////////////////////////////////////////////////
+	
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (copy_string, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -164,7 +173,6 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
-	printf("%s\n", file_name);
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -175,14 +183,89 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
+	
+	
+	//
+	// Argument Parsing
+	// ex : "ls -al" / rm -rf *
+		
+	char *copy_string[30];
+	strlcpy(copy_string,file_name,strlen(file_name)+1);
 
-	/* And then load the binary */
-	success = load (file_name, &_if);
+	char *token, *save_ptr;
 
-	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
+	char *argv[30];
+	int argc = -1;
+
+	for(token = strtok_r(copy_string," ", &save_ptr); 
+		token != NULL; 
+		token = strtok_r(NULL," ", &save_ptr))
+	{
+		// if (isspace(token) != 0) // it is space
+		// 	token = strtok_r(NULL," ", &save_ptr);
+		argc ++;
+		argv[argc] = token;
+	}
+	
+	argc ++;
+
+	
+	// /bin/ls -l foo bar
+	// argv = ["/bin/ls\0","-l\0","foo\0","bar\0"];
+	// 
+
+	// /* And then load the binary */
+	// success = load (argv[0], &_if);
+
+	// /* If load failed, quit. */
+	// palloc_free_page (file_name);
+	// if (!success)
+	// 	return -1;
+
+	//
+
+	success = load(argv[0], &_if);
+	if(!success){
+		palloc_free_page(file_name);
 		return -1;
+	}
+	// Stack arrangement
+	_if.R.rdi = argc;
+
+	char *argp[argc];
+	for(int i = argc - 1; i >=0 ; i--)
+	{
+		
+		int arg_len = strlen(argv[i]) + 1;
+		_if.rsp = _if.rsp - arg_len;
+		memcpy(_if.rsp,argv[i],arg_len);
+		argp[i] = _if.rsp;
+	}
+	
+	//word-allign
+	_if.rsp = _if.rsp - (_if.rsp % 8);
+
+	_if.rsp = _if.rsp -8;
+	memset(_if.rsp,0,sizeof(char *));
+
+	for(int i = argc - 1; i >= 0; i--)
+	{
+		_if.rsp = _if.rsp - 8;
+		memcpy(_if.rsp,&argp[i],8);
+	}
+	
+	_if.R.rsi = _if.rsp;
+	_if.rsp = _if.rsp -8;
+	memset(_if.rsp,0,sizeof(void *));
+
+	//hex_dump(_if.rsp, _if.rsp, LOADER_PHYS_BASE - _if.rsp, true);
+
+
+	//
+	//
+	palloc_free_page(file_name);
+
+
 
 	/* Start switched process. */
 	do_iret (&_if);

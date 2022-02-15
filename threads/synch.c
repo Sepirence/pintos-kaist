@@ -111,6 +111,7 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
+
 	if (!list_empty (&sema->waiters))
 	{
 		enum cmp_fun_num *type = PRIORITY;
@@ -195,22 +196,6 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
-	
-	// if (lock->holder != NULL)
-	// {
-	// 	thread_current()->waiting_lock = lock;
-		
-	// 	int prev_priority = lock->holder->priority;
-	// 	int new_priority = thread_current()->priority;
-	// 	if (new_priority > prev_priority) {
-	// 		if(list_empty(&lock->holder->donate_list))
-	// 		{
-	// 			lock->holder->original_priority = prev_priority;
-	// 		}
-	// 		list_push_back(&lock->holder->donate_list, &thread_current()->donate_elem);
-	// 		lock->holder->priority = new_priority;
-	// 	}
-	// }
 
 	if(lock->holder)
 	{	
@@ -225,18 +210,9 @@ lock_acquire (struct lock *lock) {
 		//홀더의 donate last에 현재 쓰레드 추가
 		enum cmp_fun_num *type = DONATE;
 		list_insert_ordered(&holder->donate_list,&curr->donate_elem,compare_function,type);
-		
-		// //홀더가 처음 기부받을때만 original priority 설정
-		// if(holder->original_priority == -1)
-		// 	holder->original_priority = holder->priority;
-
-		//홀더의 우선순위 변경
-		//holder->priority = curr->priority;
 
 		donate_priority();
-		// printf("DONE %d \n", thread_current()->priority);
-	}
-			
+	}		
 	
 	sema_down (&lock->semaphore);
 	
@@ -275,38 +251,6 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-	
-	// if (lock->holder->original_priority != -1)
-	// {	
-	// 	//struct list donate_list = lock->holder->donate_list;
-	// 	enum cmp_fun_num *type = PRIORITY;
-		
-	// 	list_sort(&lock->holder->donate_list,compare_function,type);
-		
-	// 	struct list_elem *e;
-	// 	for(e = list_begin(&lock->holder->donate_list); e != list_end(&lock->holder->donate_list); e = list_next(e))
-	// 	{
-	// 		struct thread *t = list_entry(e,struct thread, donate_elem);
-	// 		if(t->waiting_lock == lock)
-	// 		{	
-	// 			list_remove(e);
-	// 			break;
-	// 		}
-	// 	}
-	// 	if(!list_empty(&lock->holder->donate_list))
-	// 	{
-	// 		list_head(&lock->holder->donate_list);
-	// 		struct thread *t = list_entry(list_head(&lock->holder->donate_list),struct thread, donate_elem);
-	
-	// 		lock->holder->priority = t->priority;
-	// 	}
-	// 	else
-	// 	{	
-	// 		lock->holder->priority = lock->holder->original_priority;
-	// 		lock->holder->original_priority = -1;
-	// 	}
-	// }
-
 
 	remove_lock(lock);
 
@@ -372,7 +316,6 @@ priority_reset(void)
 	struct thread *curr = thread_current();
 
 	curr->priority = curr->original_priority;
-	// printf("%d", list_empty(&curr->donate_list));
 	if(!list_empty(&curr->donate_list))
 	{
 		enum cmp_fun_num *type = DONATE;
@@ -380,7 +323,6 @@ priority_reset(void)
 
 		struct thread *t = list_entry(list_front(&curr->donate_list),struct thread, donate_elem);
 		if(t->priority > curr->priority)
-			// printf("abc%d\n", t->priority);
 			curr->priority = t->priority;
 	}	
 }

@@ -1,5 +1,7 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES *(1 << 9)
 
 #include <debug.h>
 #include <list.h>
@@ -120,6 +122,9 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+
+	struct file **fd_table;
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
