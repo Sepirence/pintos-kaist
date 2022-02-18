@@ -5,14 +5,40 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/loader.h"
+#include "threads/palloc.h"
 #include "userprog/gdt.h"
+#include "userprog/process.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "lib/string.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+
+void 	 halt(void);
+void 	 exit(int status);
+// pid_t fork(const char *thread_name);
+int 	 exec(const char *cmd_line);
+// int	 wait(pid_t pid); on process.c
+bool	 create(const char *file, unsigned initial_size);
+bool	 remove(const char *file);
+int 	 open(const char *file);
+int		 filesize(int fd);
+int 	 read(int fd, void *buffer, unsigned size);
+int 	 write(int fd, const void *buffer, unsigned size);
+void	 seek(int fd, unsigned position);
+unsigned tell(int fd);
+void	 close(int fd);
+
+
+
 void check_address(const uint64_t *addr);
 static struct file *find_file_by_fd(int fd);
+static int add_file_to_fdt(struct file *f);
+static void remove_file_from_fdt(int fd);
+
 
 /* System call.
  *
@@ -40,8 +66,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
-
-	// lock_init(&fs_lock);
+	
+	lock_init(&file_rw_lock);
 
 }
 
@@ -49,8 +75,8 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	//printf("%x\n",f->R.rax);
-	//printf ("system call!\n");
+	// printf("!!!%x\n",f->R.rax);
+	// printf ("system call!\n");
  
 	switch(f->R.rax)
 	{
@@ -62,35 +88,48 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			exit(f->R.rdi);
 			break;
 		case SYS_FORK:
+			//f->R.rax = fork(f->R.rdi,f);
 			break;
 		case SYS_EXEC:
+			// if(exec(f->R.rdi) == -1)
+			// 	exit(-1);
 			break;
 		case SYS_WAIT:
+			// f->R.rax = process_wait(f->R.rdi);
 			break;
 		case SYS_CREATE:
+			//printf("CREATE\n");
+			f->R.rax = create(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_REMOVE:
+			// f->R.rax = remove(f->R.rdi);
 			break;
 		case SYS_OPEN:
+			//printf("OPEN\n");
+			f->R.rax = open(f->R.rdi);
 			break;
 		case SYS_FILESIZE:
+			// f->R.rax = filesize(f->R.rdi);
 			break;
 		case SYS_READ:
-			printf("READ\n");
+			// f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:
-			//printf("WRITE\n");
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_SEEK:
+			// seek(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_TELL:
+			// f->R.rax = tell(f->R.rdi);
 			break;
 		case SYS_CLOSE:
+			// close(f->R.rdi);
+			break;
+		default:
+			exit(-1);
 			break;
 	}
-
-	//thread_exit ();
 }
 
 void halt(void)
@@ -106,22 +145,76 @@ void exit(int status) {
 	thread_exit();
 }
 
-// pid_t exec(const char *cmd_line) {
+int exec(const char *cmd_line) {
+	check_address(cmd_line);
+
+	int file_size = strlen(cmd_line) + 1;
+	char *fn_copy;
+
+	if((fn_copy = palloc_get_page(PAL_ZERO)) == NULL)
+		exit(-1);
+
+	strlcpy(fn_copy,cmd_line,file_size);
+
+	if(process_exec(fn_copy) == -1)
+		return -1;
+
+	NOT_REACHED();
+	return 0;
+
+}
+
+
+bool create(const char *file, unsigned initial_size)
+{
+	check_address(file);
+	return filesys_create(file, initial_size);
+}
+
+int open(const char *file)
+{
+	check_address(file);
+	struct file *f = filesys_open(file);
+	if(f == NULL)
+		return -1;
 	
+	int fd = add_file_to_fdt(file);
+	
+	if(fd == -1)
+		return -1;
 
-// }
+	return fd;
+}
 
-// int wait(pid_t pid) {
+int read(int fd, void *buffer, unsigned size)
+{
+	check_address(buffer);
+	int read_result;
 
+	if(fd == 0)
+	{
+		*(char *)buffer = input_getc();
+		read_result = size;
+	}
+	else
+	{
+		if(find_file_by_fd(fd) == NULL)
+			return -1;
+		lock_acquire(&file_rw_lock);
+		read_result = file_read(find_file_by_fd(fd),buffer,size);
+		lock_release(&file_rw_lock);
+	}
 
-// }
+	return read_result;
+
+}
 
 int write(int fd, const void *buffer, unsigned size)
 {
 	check_address(buffer);
 	int write_result;
 
-	// lock_acquire(&fs_lock);
+	lock_acquire(&file_rw_lock);
 
 	if(fd == 1)
 	{	
@@ -136,11 +229,19 @@ int write(int fd, const void *buffer, unsigned size)
 		else
 			write_result = -1;
 	}
-	// lock_release(&fs_lock);
+	lock_release(&file_rw_lock);
 	return write_result;
 }
 
+void close(int fd)
+{
+	struct file *f;
+		
+	if((f= find_file_by_fd(fd)) == NULL)
+		return;
 
+	remove_file_from_fdt(fd);
+}
 
 void check_address(const uint64_t *addr)	
 {
@@ -150,11 +251,36 @@ void check_address(const uint64_t *addr)
 	}
 }
 
-static struct file *find_file_by_fd(int fd) {
+static struct file *find_file_by_fd(int fd) 
+{
 	struct thread *cur = thread_current();
 
 	if (fd < 0 || fd >= FDCOUNT_LIMIT) {
 		return NULL;
 	}
 	return cur->fd_table[fd];
+}
+
+static int add_file_to_fdt(struct file *f)
+{
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fd_table;
+
+	while(curr->fd_idx < FDCOUNT_LIMIT && fdt[curr->fd_idx] != NULL)
+		curr->fd_idx++;
+
+	if(curr->fd_idx >= FDCOUNT_LIMIT)
+		return -1;
+	
+	fdt[curr->fd_idx] = f;
+
+	return curr->fd_idx;
+}
+
+static void remove_file_from_fdt(int fd)
+{
+	struct thread *curr = thread_current();
+	if(fd < 0 || fd >= FDCOUNT_LIMIT)
+		return;
+	curr->fd_table[fd] = NULL;
 }

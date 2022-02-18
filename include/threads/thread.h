@@ -124,6 +124,7 @@ struct thread {
 	uint64_t *pml4;                     /* Page map level 4 */
 
 	struct file **fd_table;
+	int fd_idx;
 
 #endif
 #ifdef VM

@@ -3,6 +3,6 @@
 
 void syscall_init (void);
 
-struct lock *fs_lock;
+struct lock file_rw_lock;
 
 #endif /* userprog/syscall.h */

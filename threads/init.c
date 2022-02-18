@@ -21,6 +21,7 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
@@ -238,7 +239,6 @@ parse_options (char **argv) {
 static void
 run_task (char **argv) {
 	const char *task = argv[1];
-
 	printf ("Executing '%s':\n", task);
 #ifdef USERPROG
 	if (thread_tests){
