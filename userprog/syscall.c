@@ -19,7 +19,7 @@ void syscall_handler (struct intr_frame *);
 
 void 	 halt(void);
 void 	 exit(int status);
-// pid_t fork(const char *thread_name);
+tid_t 	 fork(const char *thread_name, struct intr_frame *f);
 int 	 exec(const char *cmd_line);
 // int	 wait(pid_t pid); on process.c
 bool	 create(const char *file, unsigned initial_size);
@@ -81,14 +81,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch(f->R.rax)
 	{
 		case SYS_HALT:
-			printf("HALT\n");
 			halt();
 			break;
 		case SYS_EXIT:
 			exit(f->R.rdi);
 			break;
 		case SYS_FORK:
-			//f->R.rax = fork(f->R.rdi,f);
+			f->R.rax = fork(f->R.rdi,f);
 			break;
 		case SYS_EXEC:
 			// if(exec(f->R.rdi) == -1)
@@ -98,21 +97,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			// f->R.rax = process_wait(f->R.rdi);
 			break;
 		case SYS_CREATE:
-			//printf("CREATE\n");
 			f->R.rax = create(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_REMOVE:
 			// f->R.rax = remove(f->R.rdi);
 			break;
 		case SYS_OPEN:
-			//printf("OPEN\n");
 			f->R.rax = open(f->R.rdi);
 			break;
 		case SYS_FILESIZE:
-			// f->R.rax = filesize(f->R.rdi);
+			f->R.rax = filesize(f->R.rdi);
 			break;
 		case SYS_READ:
-			// f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -124,7 +121,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			// f->R.rax = tell(f->R.rdi);
 			break;
 		case SYS_CLOSE:
-			// close(f->R.rdi);
+			close(f->R.rdi);
 			break;
 		default:
 			exit(-1);
@@ -143,6 +140,11 @@ void exit(int status) {
 
 	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_exit();
+}
+
+tid_t fork(const char *thread_name, struct intr_frame *f)
+{
+	process_fork(thread_name, f);
 }
 
 int exec(const char *cmd_line) {
@@ -177,29 +179,44 @@ int open(const char *file)
 	struct file *f = filesys_open(file);
 	if(f == NULL)
 		return -1;
-	
-	int fd = add_file_to_fdt(file);
+	int fd = add_file_to_fdt(f);
 	
 	if(fd == -1)
 		return -1;
-
 	return fd;
+}
+
+int filesize(int fd)
+{
+	struct file *f = find_file_by_fd(fd);
+
+	if (f == NULL)
+		return -1;
+
+	return file_length(f);
 }
 
 int read(int fd, void *buffer, unsigned size)
 {
 	check_address(buffer);
 	int read_result;
-
-	if(fd == 0)
+	if(find_file_by_fd(fd) == NULL)
+			return -1;
+	if(fd == 1)
 	{
-		*(char *)buffer = input_getc();
-		read_result = size;
+		int i;
+		unsigned char *buf = buffer;
+		for(i=0; i< size; i++)
+		{
+			char c = input_getc();
+			*buf++ = c;
+			if(c=='\0')
+				break;
+		}
+		read_result = i;
 	}
 	else
 	{
-		if(find_file_by_fd(fd) == NULL)
-			return -1;
 		lock_acquire(&file_rw_lock);
 		read_result = file_read(find_file_by_fd(fd),buffer,size);
 		lock_release(&file_rw_lock);
@@ -253,12 +270,12 @@ void check_address(const uint64_t *addr)
 
 static struct file *find_file_by_fd(int fd) 
 {
-	struct thread *cur = thread_current();
-
-	if (fd < 0 || fd >= FDCOUNT_LIMIT) {
+	struct thread *curr = thread_current();
+	if (fd < 2 || fd >= FDCOUNT_LIMIT) {
 		return NULL;
 	}
-	return cur->fd_table[fd];
+	return curr->fd_table[fd];
+
 }
 
 static int add_file_to_fdt(struct file *f)
@@ -273,7 +290,6 @@ static int add_file_to_fdt(struct file *f)
 		return -1;
 	
 	fdt[curr->fd_idx] = f;
-
 	return curr->fd_idx;
 }
 
