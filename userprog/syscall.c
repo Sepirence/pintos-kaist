@@ -19,7 +19,7 @@ void syscall_handler (struct intr_frame *);
 
 void 	 halt(void);
 void 	 exit(int status);
-tid_t 	 fork(const char *thread_name, struct intr_frame *f);
+//tid_t 	 fork(const char *thread_name);
 int 	 exec(const char *cmd_line);
 // int	 wait(pid_t pid); on process.c
 bool	 create(const char *file, unsigned initial_size);
@@ -73,28 +73,27 @@ syscall_init (void) {
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
-	// printf("!!!%x\n",f->R.rax);
-	// printf ("system call!\n");
+	//  printf("!!!%x\n",f->R.rax);
+	//  printf ("system call!\n");
  
 	switch(f->R.rax)
 	{
 		case SYS_HALT:
-			halt();
 			break;
 		case SYS_EXIT:
 			exit(f->R.rdi);
 			break;
 		case SYS_FORK:
-			f->R.rax = fork(f->R.rdi,f);
+			f->R.rax = process_fork(f->R.rdi,f);
 			break;
 		case SYS_EXEC:
-			// if(exec(f->R.rdi) == -1)
-			// 	exit(-1);
+			if(exec(f->R.rdi) == -1)
+				exit(-1);
 			break;
 		case SYS_WAIT:
-			// f->R.rax = process_wait(f->R.rdi);
+			f->R.rax = process_wait(f->R.rdi);
 			break;
 		case SYS_CREATE:
 			f->R.rax = create(f->R.rdi, f->R.rsi);
@@ -115,7 +114,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_SEEK:
-			// seek(f->R.rdi, f->R.rsi);
+			seek(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_TELL:
 			// f->R.rax = tell(f->R.rdi);
@@ -135,16 +134,11 @@ void halt(void)
 }
 
 void exit(int status) {
-	struct thread *cur = thread_current();
-    // cur->exit_status = status;
+	struct thread *curr = thread_current();
+    curr->exit_status = status;
 
 	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_exit();
-}
-
-tid_t fork(const char *thread_name, struct intr_frame *f)
-{
-	process_fork(thread_name, f);
 }
 
 int exec(const char *cmd_line) {
@@ -166,7 +160,6 @@ int exec(const char *cmd_line) {
 
 }
 
-
 bool create(const char *file, unsigned initial_size)
 {
 	check_address(file);
@@ -181,6 +174,9 @@ int open(const char *file)
 		return -1;
 	int fd = add_file_to_fdt(f);
 	
+	if(strcmp(file, thread_current()->name) == 0)
+		file_deny_write(f);
+
 	if(fd == -1)
 		return -1;
 	return fd;
@@ -201,7 +197,7 @@ int read(int fd, void *buffer, unsigned size)
 	check_address(buffer);
 	int read_result;
 	if(find_file_by_fd(fd) == NULL)
-			return -1;
+		return -1;
 	if(fd == 1)
 	{
 		int i;
@@ -229,8 +225,8 @@ int read(int fd, void *buffer, unsigned size)
 int write(int fd, const void *buffer, unsigned size)
 {
 	check_address(buffer);
-	int write_result;
 
+	int write_result;
 	lock_acquire(&file_rw_lock);
 
 	if(fd == 1)
@@ -240,15 +236,31 @@ int write(int fd, const void *buffer, unsigned size)
 	}
 	else
 	{
-
 		if(find_file_by_fd(fd) != NULL)
 			write_result = file_write(find_file_by_fd(fd),buffer,size);
+			
 		else
 			write_result = -1;
 	}
 	lock_release(&file_rw_lock);
 	return write_result;
 }
+
+struct file {
+	struct inode *inode;        /* File's inode. */
+	off_t pos;                  /* Current position. */
+	bool deny_write;            /* Has file_deny_write() been called? */
+};
+
+void seek(int fd, unsigned position)
+{
+	struct file *f = find_file_by_fd(fd);
+	if(f == NULL)
+		return;
+	
+	f->pos = position; 
+}
+
 
 void close(int fd)
 {
@@ -257,15 +269,21 @@ void close(int fd)
 	if((f= find_file_by_fd(fd)) == NULL)
 		return;
 
+	file_allow_write(f);
+
 	remove_file_from_fdt(fd);
 }
+
 
 void check_address(const uint64_t *addr)	
 {
 	struct thread *cur = thread_current();
-	if (addr == NULL || !(is_user_vaddr(addr)) || pml4_get_page(cur->pml4, addr) == NULL) {
+	if (addr == NULL || !(is_user_vaddr(addr)) || pml4_get_page(cur->pml4, addr) == NULL) 
+	{
 		exit(-1);
 	}
+	if(is_kernel_vaddr(addr))
+		exit(-1);
 }
 
 static struct file *find_file_by_fd(int fd) 

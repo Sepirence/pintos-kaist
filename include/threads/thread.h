@@ -7,6 +7,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -114,8 +115,6 @@ struct thread {
 	// Advanced Scheduler
 	int nice;
 	fp recent_cpu;
-
-
 	///
 
 	
@@ -125,6 +124,14 @@ struct thread {
 
 	struct file **fd_table;
 	int fd_idx;
+	int exit_status;
+
+	// Fork Status
+	struct intr_frame p_if;
+	struct list child_list;
+	struct list_elem child_elem;
+	struct semaphore fork_sema;
+	struct semaphore wait_sema;
 
 #endif
 #ifdef VM

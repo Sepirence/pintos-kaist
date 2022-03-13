@@ -27,6 +27,20 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+struct thread *get_child_with_tid(tid_t tid)
+{
+	struct thread *curr = thread_current();
+	struct list *child_list = &curr->child_list;
+	struct list_elem *e;
+	for(e = list_begin(child_list); e != list_end(child_list); e = list_next(e))
+	{
+		struct thread *t = list_entry(e, struct thread, child_elem);
+		if(t->tid == tid)
+			return t;
+	}
+	return NULL;
+}
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -83,10 +97,26 @@ initd (void *f_name) {
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+process_fork (const char *name, struct intr_frame *if_) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+
+	
+	struct thread *curr = thread_current();
+	memcpy(&curr->p_if, if_, sizeof(struct intr_frame));
+	tid_t tid = thread_create (name, PRI_DEFAULT, __do_fork, thread_current());
+	// tid is "child tid"
+	// if fail
+	if (tid == TID_ERROR)
+		return TID_ERROR;
+
+	struct thread *child = get_child_with_tid(tid);
+
+	if(child->status == -1)
+		return TID_ERROR;
+
+	sema_down(&child->fork_sema);
+
+	return tid;
 }
 
 #ifndef VM
@@ -101,21 +131,27 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	if(is_kernel_vaddr(va))
+		return true;
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	newpage = palloc_get_page(PAL_USER);
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	memcpy(newpage,parent_page,PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -127,15 +163,20 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
+	
+	// curr is child
+	
 	struct intr_frame if_;
-	struct thread *parent = (struct thread *) aux;
+	struct thread *parent = (struct thread *) aux; 
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if;
 	bool succ = true;
 
+	parent_if = &parent->p_if;
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -158,8 +199,18 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
-	process_init ();
+	for(int i = 2; i<FDCOUNT_LIMIT; i++)
+	{
+		struct file *f = parent->fd_table[i];
+		if(f != NULL)
+		{
+			current->fd_table[i] = file_duplicate(f);
+		}
+	}
 
+
+	process_init ();
+	sema_up(&current->fork_sema);
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
@@ -183,12 +234,10 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
-	
-	
-	//
-	// Argument Parsing
-	// ex : "ls -al" / rm -rf *
-		
+
+	// ===================================================
+	// Argument Parsing		
+	// ===================================================
 	char *copy_string[30];
 	strlcpy(copy_string,file_name,strlen(file_name)+1);
 
@@ -209,27 +258,20 @@ process_exec (void *f_name) {
 	
 	argc ++;
 
-	
-	// /bin/ls -l foo bar
-	// argv = ["/bin/ls\0","-l\0","foo\0","bar\0"];
-	// 
-
-	// /* And then load the binary */
-	// success = load (argv[0], &_if);
-
-	// /* If load failed, quit. */
-	// palloc_free_page (file_name);
-	// if (!success)
-	// 	return -1;
-
-	//
+	// ===================================================
+	// Argument Parsing End		
+	// ===================================================
 
 	success = load(argv[0], &_if);
 	if(!success){
 		palloc_free_page(file_name);
 		return -1;
 	}
-	// Stack arrangement
+
+	// ===================================================
+	// Stack arrangement	
+	// ===================================================
+	
 	_if.R.rdi = argc;
 
 	char *argp[argc];
@@ -258,14 +300,14 @@ process_exec (void *f_name) {
 	_if.rsp = _if.rsp -8;
 	memset(_if.rsp,0,sizeof(void *));
 
+	//DEBUG CODE
 	//hex_dump(_if.rsp, _if.rsp, LOADER_PHYS_BASE - _if.rsp, true);
 
+	// ===================================================
+	// Stack arrangement End
+	// ===================================================
 
-	//
-	//
 	palloc_free_page(file_name);
-
-
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -283,11 +325,23 @@ process_exec (void *f_name) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	return -1;
+	struct thread *child = get_child_with_tid(child_tid);
+	// NULL or tid
+	if(child == NULL){
+		return -1;
+	}	
+	sema_down(&child->wait_sema);
+
+	int exit_status = child->exit_status;
+
+	list_remove(&child->child_elem);
+	
+
+	return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -298,6 +352,7 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	sema_up(&curr->wait_sema);
 
 	process_cleanup ();
 }
