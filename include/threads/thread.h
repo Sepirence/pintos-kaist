@@ -132,6 +132,9 @@ struct thread {
 	struct list_elem child_elem;
 	struct semaphore fork_sema;
 	struct semaphore wait_sema;
+	struct semaphore free_sema;
+
+	struct file *running_file;
 
 #endif
 #ifdef VM

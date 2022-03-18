@@ -19,9 +19,9 @@ void syscall_handler (struct intr_frame *);
 
 void 	 halt(void);
 void 	 exit(int status);
-//tid_t 	 fork(const char *thread_name);
+//tid_t  fork(const char *thread_name);
 int 	 exec(const char *cmd_line);
-// int	 wait(pid_t pid); on process.c
+// int	 	 wait(tid_t pid);
 bool	 create(const char *file, unsigned initial_size);
 bool	 remove(const char *file);
 int 	 open(const char *file);
@@ -75,8 +75,7 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
-	//  printf("!!!%x\n",f->R.rax);
-	//  printf ("system call!\n");
+	//  printf ("system call! %d\n",f->R.rax);
  
 	switch(f->R.rax)
 	{
@@ -99,7 +98,7 @@ syscall_handler (struct intr_frame *f) {
 			f->R.rax = create(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_REMOVE:
-			// f->R.rax = remove(f->R.rdi);
+			f->R.rax = remove(f->R.rdi);
 			break;
 		case SYS_OPEN:
 			f->R.rax = open(f->R.rdi);
@@ -117,7 +116,7 @@ syscall_handler (struct intr_frame *f) {
 			seek(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_TELL:
-			// f->R.rax = tell(f->R.rdi);
+			f->R.rax = tell(f->R.rdi);
 			break;
 		case SYS_CLOSE:
 			close(f->R.rdi);
@@ -153,10 +152,11 @@ int exec(const char *cmd_line) {
 	strlcpy(fn_copy,cmd_line,file_size);
 
 	if(process_exec(fn_copy) == -1)
+	{
+		palloc_free_page(fn_copy);
 		return -1;
-
-	NOT_REACHED();
-	return 0;
+	}
+		
 
 }
 
@@ -164,6 +164,12 @@ bool create(const char *file, unsigned initial_size)
 {
 	check_address(file);
 	return filesys_create(file, initial_size);
+}
+
+bool remove(const char *file)
+{
+	check_address(file);
+	return filesys_remove(file);
 }
 
 int open(const char *file)
@@ -259,6 +265,11 @@ void seek(int fd, unsigned position)
 		return;
 	
 	f->pos = position; 
+}
+
+unsigned tell(int fd)
+{	
+	return file_tell(find_file_by_fd(fd));
 }
 
 

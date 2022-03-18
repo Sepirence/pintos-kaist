@@ -151,6 +151,8 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		pml4_destroy(parent->pml4);
+		palloc_free_page(newpage);
 		return false;
 	}
 	return true;
@@ -264,6 +266,8 @@ process_exec (void *f_name) {
 
 	success = load(argv[0], &_if);
 	if(!success){
+		free(copy_string);
+		free(argv);
 		palloc_free_page(file_name);
 		return -1;
 	}
@@ -308,7 +312,9 @@ process_exec (void *f_name) {
 	// ===================================================
 
 	palloc_free_page(file_name);
-
+	// free(copy_string);
+	// free(argv);
+	// free(argp);
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -334,12 +340,13 @@ process_wait (tid_t child_tid) {
 	if(child == NULL){
 		return -1;
 	}	
+	// printf("HERE!\n");
 	sema_down(&child->wait_sema);
-
+	// printf("HERE\n");
 	int exit_status = child->exit_status;
 
 	list_remove(&child->child_elem);
-	
+	sema_up(&child->free_sema);
 
 	return exit_status;
 }
@@ -352,9 +359,22 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-	sema_up(&curr->wait_sema);
+	
+	// printf("%s EXIT\n",thread_current()->name);
+	for(int i = 2; i < FDCOUNT_LIMIT; i++)
+	{
+		if(curr->fd_table[i] != NULL)
+			close(curr->fd_table[i]);
+	}
+
+	file_close(curr->running_file);
+
+	palloc_free_multiple(curr->fd_table,FDT_PAGES);
 
 	process_cleanup ();
+
+	sema_up(&curr->wait_sema);
+	sema_down(&curr->free_sema);
 }
 
 /* Free the current process's resources. */
@@ -475,6 +495,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Open executable file. */
 	file = filesys_open (file_name);
+	thread_current()->running_file = file;
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
