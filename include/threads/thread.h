@@ -1,7 +1,7 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
-#define FDT_PAGES 3
-#define FDCOUNT_LIMIT FDT_PAGES *(1 << 9)
+// #define FDT_PAGES 3
+#define FDCOUNT_LIMIT (1 << 9)
 
 #include <debug.h>
 #include <list.h>
@@ -103,14 +103,14 @@ struct thread {
 	struct list_elem elem;              /* List element. */
 	
 	
-	/// user_addition 
+	/// user_addition in project 1
 
-	int64_t sleep_ticks;
-	int original_priority;
+	int64_t sleep_ticks;				/* */
+	int original_priority;				/* Store original priority if priority donation occurs*/
 
-	struct list donate_list;
-	struct list_elem donate_elem;
-	struct lock *waiting_lock;
+	struct list donate_list;			/* list of thread have donated priority */
+	struct list_elem donate_elem;		/* list_elem structure for donate_list */
+	struct lock *waiting_lock;			/* indicate current waiting lock */
 
 	// Advanced Scheduler
 	int nice;
@@ -122,19 +122,26 @@ struct thread {
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
 
-	struct file **fd_table;
-	int fd_idx;
-	int exit_status;
+	/// user_addition in project 2
+
+	struct file **fd_table;				/* list of fd that thread currently occupied */
+	int fd_idx;							/* index of fd_table */
+	
+	int exit_status;					/* store */	
 
 	// Fork Status
-	struct intr_frame p_if;
-	struct list child_list;
+	struct intr_frame p_if;				/* deliver parent's intr_frame to child on fork */
+
+	struct list child_list;				
 	struct list_elem child_elem;
+
+
 	struct semaphore fork_sema;
 	struct semaphore wait_sema;
-	struct semaphore free_sema;
-
-	struct file *running_file;
+	struct semaphore synch_sema;
+	///
+	///
+	///
 
 #endif
 #ifdef VM

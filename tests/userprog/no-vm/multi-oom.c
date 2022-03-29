@@ -107,6 +107,7 @@ make_children (void) {
   int pid;
   char child_name[128];
   for (; ; random_init (i), i++) {
+    
     if (i > EXPECTED_DEPTH_TO_PASS/2) {
       snprintf (child_name, sizeof child_name, "%s_%d_%s", "child", i, "X");
       pid = fork(child_name);
@@ -117,14 +118,15 @@ make_children (void) {
         fail ("Unreachable");
       }
     }
-
     snprintf (child_name, sizeof child_name, "%s_%d_%s", "child", i, "O");
-    pid = fork(child_name);
+    pid = fork(child_name); // child_0_O
     if (pid < 0) {
       exit (i);
     } else if (pid == 0) {
+      // printf("%dth, consume\n",i);
       consume_some_resources();
     } else {
+      // printf("%dth, break\n",i);
       break;
     }
   }

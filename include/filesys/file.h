@@ -3,6 +3,9 @@
 
 #include "filesys/off_t.h"
 
+#define STDIN -100
+#define STDOUT -200
+
 struct inode;
 
 /* Opening and closing files. */

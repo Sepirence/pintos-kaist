@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "filesys/file.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -192,25 +193,34 @@ thread_create (const char *name, int priority,
 
 	/* Allocate thread. */
 	t = palloc_get_page (PAL_ZERO);
-	if (t == NULL)
+	if (t == NULL){
 		return TID_ERROR;
-
+	}
+	
 	/* Initialize thread. */
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
-	///	userprogram
-	t->fd_table = palloc_get_multiple(PAL_ZERO,FDT_PAGES);
-	if(t->fd_table == NULL)
-		return TID_ERROR;
-	t->fd_idx = 2;
-	t->fd_table[0] = 1; // dummy values to distinguish fd 0 and 1 from NULL
-	t->fd_table[1] = 2;
-	///
-	// printf("on thread create %s -> %s\n",thread_current()->name,name);
-	// printf("priority %d %d\n",thread_current()->priority, priority);
-	list_push_back(&thread_current()->child_list,&t->child_elem);
+	
+	#ifdef USERPROG
 
+	///	userprogram
+	t->fd_table = palloc_get_page(PAL_ZERO);
+	if(t->fd_table == NULL)
+	{
+		palloc_free_page(t);
+		return TID_ERROR;
+	}
+	t->fd_idx = 2;
+	////
+	// t->fd_table[0] = 1; // dummy values to distinguish fd 0 and 1 from NULL
+	// t->fd_table[1] = 2;
+	////
+	t->fd_table[0] = STDIN; // stdin opened
+	t->fd_table[1] = STDOUT; // stdout opened
+	list_push_back(&thread_current()->child_list,&t->child_elem);
+	#endif
+	
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;
@@ -260,7 +270,6 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	// list_push_back (&ready_list, &t->elem);
 	enum cmp_fun_num *type = PRIORITY;
 	list_insert_ordered(&ready_list, &t->elem, compare_function, type); // 1 is priority
 	t->status = THREAD_READY;
@@ -306,7 +315,7 @@ thread_exit (void) {
 #ifdef USERPROG
 	process_exit ();
 #endif
-
+	
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
@@ -341,10 +350,10 @@ thread_set_priority (int new_priority) {
 	struct thread *curr = thread_current();
 
 	curr->priority = new_priority;
-	// original priority도 받은 priority로 초기화
+	// original priority is initialized by recieved priority
 	curr->original_priority = new_priority;
 
-	// priority donation을 재확인
+	// re-confirm priority donation
 	if(!list_empty(&curr->donate_list))
 	{
 		struct thread *t = list_entry(list_front(&curr->donate_list),struct thread, donate_elem);
@@ -352,7 +361,7 @@ thread_set_priority (int new_priority) {
 			curr->priority = t->priority;
 
 	}
-	// 레디 리스트를 맨 앞 놈을 우선순위인 놈을 실행
+	// do ready list's first priority 
 	thread_yield();
 
 }
@@ -392,8 +401,6 @@ thread_get_nice (void) {
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	// printf("%d\n",load_avg);
-	// printf("%d\n",fp_to_int_near(mul_int(load_avg, 100)));
 	return fp_to_int_near(mul_int(load_avg, 100));
 }
 
@@ -466,18 +473,22 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	
 	/// user_addition
+	////////////////////////////////
 	t->original_priority = priority;
 	t->waiting_lock = NULL;
 	list_init(&t->donate_list);
 	t->nice = 0;
 	t->recent_cpu = int_to_fp(0);
-
+	///////////////////////////////
+	#ifdef USERPROG
 	list_init(&t->child_list);
 	sema_init(&t->fork_sema,0);
 	sema_init(&t->wait_sema,0);
-	sema_init(&t->free_sema,0);
-
+	sema_init(&t->synch_sema,0);
+	#endif
+	///////////////////////////////
 	t->magic = THREAD_MAGIC;
 }
 
@@ -673,7 +684,6 @@ user_timer_sleep(int64_t ticks){
 
 void
 user_timer_wakeup(int64_t ticks){
-	// struct thread *t = thread_current(); // take current thread
 	struct list_elem *e;
 
 	for (e = list_begin(&sleep_list); e != list_end(&sleep_list);)
@@ -799,15 +809,10 @@ cpu_recalculation(void){
 				), t->recent_cpu) , t->nice);
 
 
-		// t->recent_cpu = add_int(mul_fp(div_fp ((mul_int(load_avg,2)),(add_int(mul_int(load_avg,2),1))),t->recent_cpu),t->nice);
 	}
 	
 	struct thread *curr = thread_current();
-	// printf("bef recent : %d nice: %d load avg: %d\n", curr->recent_cpu, curr->nice, load_avg);
-	// printf("calc = %d\n", add_int(mul_fp(div_fp ((mul_int(load_avg,2)),(add_int(mul_int(load_avg,2),1))),curr->recent_cpu),curr->nice));
 	curr->recent_cpu = add_int(mul_fp(div_fp ((mul_int(load_avg,2)),(add_int(mul_int(load_avg,2),1))),curr->recent_cpu),curr->nice);
-	// printf("aft recent : %d nice: %d load avg: %d\n", curr->recent_cpu, curr->nice, load_avg);
-	// printf("\n");
 
 
 
@@ -844,10 +849,8 @@ calculating_load_avg(void){
 void
 priority_calculation(void){
 	struct list_elem *e;
-	// enum intr_level old_level;
 
 
-	// old_level = intr_disable ();
 
 	for(e = list_begin(&ready_list); e != list_end(&ready_list); e = list_next(e))
 	{
