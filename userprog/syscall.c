@@ -237,8 +237,7 @@ int syscall_read(int fd, void *buffer, unsigned size)
 
 	// invalid fd
 	if (is_valid_file_descriptor(fd) == false) return -1;
-	// if(find_file_by_fd(fd) == NULL)
-	// 	return -1;
+	
 	
 	// stdin
 	if(is_stdin(fd))
@@ -260,7 +259,6 @@ int syscall_read(int fd, void *buffer, unsigned size)
 		struct thread *curr = thread_current();
 		if(curr->fd_table[fd] == NULL)
 		{
-			// printf("NULL READ ERROR \n");
 			return -1;
 		}
 
@@ -333,17 +331,23 @@ void syscall_close(int fd_idx)
 		return;
 	}
 	
-	// syscall_dup2된 파일들 모두 종료시켜야함
+	// syscall_dup2 fd_idx NULL로 초기화
 	struct thread *curr = thread_current();
+
+	curr->fd_table[fd_idx] = NULL;
+
+	// 만약 다른 fd_table[i] 중 같은 파일을 가리키는 것이 없으면 파일 close
+	// if no fd_table[i] points file, then close that file
+	int no_fd_points_file = true;
+
 	for (int i = 0; i < FDCOUNT_LIMIT; i++)
 	{
 		if (curr->fd_table[i] == file)
 		{	
-			curr->fd_table[i] = NULL;
+			no_fd_points_file = false;
 		}
 	}
-	file_close(file);
-	// remove_file_from_fdt(fd_idx);
+	if (no_fd_points_file) file_close(file);
 	
 }
 
