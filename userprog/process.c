@@ -18,6 +18,8 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+
+#include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -61,9 +63,9 @@ process_create_initd (const char *file_name) {
 	strlcpy(copy_string,file_name,strlen(file_name)+1);
 
 	char *save_ptr;
-
+	
 	strtok_r(copy_string, " ", &save_ptr);
-	// ///////////////////////////////////////////////////
+	/////////////////////////////////////////////////////
 	
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (copy_string, PRI_DEFAULT, initd, fn_copy);
@@ -72,7 +74,6 @@ process_create_initd (const char *file_name) {
 		palloc_free_page(copy_string);
 	}
 	palloc_free_page(copy_string);
-	
 	return tid;
 }
 
@@ -84,7 +85,6 @@ initd (void *f_name) {
 #endif
 
 	process_init ();
-
 	if (process_exec (f_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
@@ -189,17 +189,20 @@ __do_fork (void *aux) {
 	if (current->pml4 == NULL){
 		goto error;
 	}
+
 	process_activate (current);
 #ifdef VM
+
 	supplemental_page_table_init (&current->spt);
+
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
-		goto error;
+		goto error;	
+	
 #else
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent)){
 		goto error;
 	}
 #endif
-
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
@@ -233,7 +236,6 @@ __do_fork (void *aux) {
 	//
 	// noticing cloning succeeded	
 	sema_up(&current->fork_sema);
-
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
@@ -241,14 +243,13 @@ error:
 	//
 	// for current pml4 destroy
 	process_cleanup();
-
 	//
 	// for noticing cloning is failed.
 	current->exit_status = TID_ERROR;
 	
 	//
 	// for unlock parent
-	sema_up(&current->fork_sema);
+	sema_up(&current->fork_sema); 
 
 	//
 	// cloning is failed so exit this thread
@@ -269,10 +270,11 @@ process_exec (void *f_name) {
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
-
 	/* We first kill the current context */
 	process_cleanup ();
-
+#ifdef VM
+	supplemental_page_table_init (&thread_current()->spt);
+#endif
 	// ===================================================
 	// Argument Parsing		
 	// ===================================================
@@ -310,7 +312,7 @@ process_exec (void *f_name) {
 		// PALLOC_SYS_EXEC free
 		free(argv);
 		return -1;
-	}
+	} 
 
 	// ===================================================
 	// Stack arrangement	
@@ -352,12 +354,11 @@ process_exec (void *f_name) {
 	memset(_if.rsp, 0, sizeof(void *));
 
 	//DEBUG CODE
-	//hex_dump(_if.rsp, _if.rsp, LOADER_PHYS_BASE - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, LOADER_PHYS_BASE - _if.rsp, true);
 
 	// ===================================================
 	// Stack arrangement End
 	// ===================================================
-	
 	// PALLOC_SYS_EXEC free
 	palloc_free_page(file_name);
 	// PALLOC_SYS_EXEC free
@@ -383,7 +384,6 @@ process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	
 	//
 	// if not current child
 	// if wait current child twice, child list does not have that child
@@ -440,10 +440,9 @@ process_exit (void) {
 	{
 		syscall_close(i);
 	}
-
+	
 	// free fd_table
 	palloc_free_page(curr->fd_table);
-
 	// parent process exit, but child process exists -> orphan process
 	// for preventing orphan process wait all children
 	struct list *child_list = &curr->child_list;
@@ -664,22 +663,21 @@ load (const char *file_name, struct intr_frame *if_) {
 				break;
 		}
 	}
-
 	/* Set up stack. */
 	if (!setup_stack (if_))
 		goto done;
-
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
+	
 	success = true;
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	// file_close (file); 
+	// turned off by user
 	return success;
 }
 
@@ -768,8 +766,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		/* Get a page of memory. */
 		uint8_t *kpage = palloc_get_page (PAL_USER);
 		if (kpage == NULL){
-			// printf("kapge palloc failed\n");
-		
 			return false;
 		}
 		/* Load this page. */
@@ -781,7 +777,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 		/* Add the page to the process's address space. */
 		if (!install_page (upage, kpage, writable)) {
-			// printf("fail\n");
 			palloc_free_page (kpage);
 			return false;
 		}
@@ -808,10 +803,7 @@ setup_stack (struct intr_frame *if_) {
 		else
 			palloc_free_page (kpage);
 	}
-	// else {
-	// 	printf("kapge setup stack palloc failed\n");
-
-	// }
+	
 	return success;
 }
 
@@ -843,6 +835,16 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	struct Inform_load_file *ilf = (struct Inform_load_file *)aux;
+	file_seek(ilf->file, ilf->ofs);
+	int read_byte = file_read(ilf->file, page->frame->kva, ilf->page_read_bytes);
+	if(read_byte != (int)ilf->page_read_bytes) 
+	{
+		// error handling USERTODO
+		return false;
+	}
+	memset (page->frame->kva + ilf->page_read_bytes, 0, ilf->page_zero_bytes);
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -865,7 +867,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
-
 	while (read_bytes > 0 || zero_bytes > 0) {
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
@@ -874,15 +875,23 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
-			return false;
+		// void *aux = NULL;
+		// page load inform addition
+		struct Inform_load_file* ilf = 
+			(struct Inform_load_file *)malloc(sizeof(struct Inform_load_file));
+		ilf->file = file;
+		ilf->ofs = ofs;
+		ilf->page_read_bytes = page_read_bytes;
+		ilf->page_zero_bytes = page_zero_bytes;
 
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
+					writable, lazy_load_segment, (void *)ilf))
+			return false;
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes;
 	}
 	return true;
 }
@@ -892,12 +901,19 @@ static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
-
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
-
+	success = vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true);
+	if (success) {
+		success = vm_claim_page(stack_bottom);
+		if (success) {
+			if_->rsp = USER_STACK;
+		}
+		// error USERTODO
+	} 
+	// error USERTODO
 	return success;
 }
 #endif /* VM */

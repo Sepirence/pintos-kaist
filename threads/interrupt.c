@@ -397,7 +397,7 @@ intr_dump_frame (const struct intr_frame *f) {
 	printf ("es: %04x ds: %04x cs: %04x ss: %04x\n",
 			f->es, f->ds, f->cs, f->ss);
 
-	printf("ERROR on thread : %s", thread_current()->name);
+	printf("ERROR on thread : %s\n", thread_current()->name);
 }
 
 /* Returns the name of interrupt VEC. */

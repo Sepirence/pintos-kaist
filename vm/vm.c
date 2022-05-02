@@ -9,6 +9,8 @@
 #include "threads/mmu.h"
 #include "filesys/page_cache.h"
 // #include "iib/threads/synch.h" 
+struct frame_table frame_table;
+
 //
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -23,9 +25,9 @@ vm_init (void) {
 	register_inspect_intr ();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
-	struct frame_table *frame_table;
-	list_init(&frame_table->frames);
-	lock_init(&frame_table->frame_lock);
+	// struct frame_table *frame_table;
+	list_init(&frame_table.frames);
+	lock_init(&frame_table.frame_lock);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -55,34 +57,32 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
-
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
 		struct page *new_page = (struct page*)malloc(sizeof(struct page));
-		
 		typedef bool (*page_inintializer) (struct page *, enum vm_type, void *kva);
-		page_inintializer initializer;
+		page_inintializer initializer = NULL;
 		
-		if(type == VM_ANON)	initializer = anon_initializer;	
-		if(type == VM_FILE) initializer = file_backed_initializer;
+		if(VM_TYPE(type) == VM_ANON) initializer = anon_initializer;	
+		else if(VM_TYPE(type) == VM_FILE) initializer = file_backed_initializer;
 		
 		// project 4
-		if(type == VM_PAGE_CACHE) = page_cache_initializer;
+		else if(VM_TYPE(type) == VM_PAGE_CACHE) initializer = page_cache_initializer;
 		//
+		uninit_new(new_page, upage, init, type, aux, initializer);
+		// printf("new page: %p\n",new_page->va);
 		
 		new_page->t = thread_current();
 		new_page->writable = writable;
-
-		uninit_new(new_page, upage, init, type, aux, initializer);
-
+		new_page->type = type;
 		/* TODO: Insert the page into the spt. */
-
-		if(!spt_insert_page(thread_current()->spt, new_page)){
+		// printf("thread: %p thread name:%s type: %d, va: %p, writable: %d\n", new_page->t, new_page->t->name,VM_TYPE(new_page->type), new_page->va, new_page->writable);
+	
+		if(!spt_insert_page(spt, new_page)){
 			// error handling USERTODO
 			free(new_page);
 			goto err;
@@ -98,7 +98,8 @@ struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va) {
 	struct page *page = NULL;
 	/* TODO: Fill this function. */
-	page = page_lookup(spt, va);
+	// printf("page_lookup: %p, round_down: %p\n", va, pg_round_down(va));
+	page = page_lookup(spt, pg_round_down(va));
 	return page;
 }
 
@@ -108,9 +109,10 @@ spt_insert_page (struct supplemental_page_table *spt,
 		struct page *page) {
 	bool succ = false;
 	/* TODO: Fill this function. */
-	if (hash_insert(&spt, &page->spt_elem) == NULL)
+	if (hash_insert(&spt->pages, &page->spt_elem) == NULL){
 		succ = true;
-	
+		// printf("succ: %d, page va: %p\n", succ, page->va);
+	}
 	return succ;
 }
 
@@ -149,7 +151,6 @@ vm_get_frame (void) {
 	/* TODO: Fill this function. */
 
 	void *addr_new_allocated_page = palloc_get_page(PAL_USER);
-	
 	// 0x4000000 ~ 0x80040000 유저영역
 	// 0x800400000 ~ 끝 커널
 	// kva 0x80040000 + 0x123 == physical memeory 0x123
@@ -158,13 +159,14 @@ vm_get_frame (void) {
 	if (addr_new_allocated_page == NULL){
 		// evict the page
 		free(frame);
+		PANIC("todo");
 		return vm_evict_frame();
 		// USERTODO
 	}
 	frame->kva = addr_new_allocated_page;
 	frame->page = NULL;
 
-	list_push_back(&frame_table->frames, frame->ft_elem);
+	list_push_back(&frame_table.frames, &frame->ft_elem);
 	
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -173,7 +175,9 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	// bool succ = vm_alloc_page(VM_ANON | VM_Marker_0, addr, true);
+	// return succ;
 }
 
 /* Handle the fault on write_protected page */
@@ -183,13 +187,33 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+vm_try_handle_fault (struct intr_frame *f, void *addr,
+		bool user, bool write, bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = NULL;
+	
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 
+	// printf("addr: %p, user: %d, write: %d, not_present: %d\n", addr, user, write, not_present);
+	// printf("is kernel vaddr: %d\n", is_kernel_vaddr(addr));
+	
+	
+	// writing r/o page
+	if (!not_present) return false;
+	
+	// user && kernel_vaddr => false
+	if (user && is_kernel_vaddr(addr)) return false;
+
+	// addr not in spt
+	if ((page = spt_find_page(spt, addr)) == NULL) {
+		
+		// printf("addr not in spt\n");
+		return false; 
+	}
+
+	// write && read_only => false
+	if (write && !page->writable) return false;
 	return vm_do_claim_page (page);
 }
 
@@ -204,7 +228,7 @@ vm_dealloc_page (struct page *page) {
 /* Claim the page that allocate on VA. */
 bool
 vm_claim_page (void *va) { 
-	struct page *page = spt_find_page(thread_current()->spt, va);
+	struct page *page = spt_find_page(&thread_current()->spt, va);
 	/* TODO: Fill this function */
 	
 	// pml4 -> kva 주소
@@ -222,17 +246,16 @@ vm_claim_page (void *va) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
-
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
-	
+	// printf("frame PA: %p\n", frame->kva);
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	if(!pml4_set_page(page->t->pml4, page->va, frame->kva, page->writable)){
 		//USERTODO
 		return false;
 	}
-
+	// return true;
 	return swap_in (page, frame->kva);
 }
 
@@ -245,15 +268,73 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
+
+	if (hash_empty(&src->pages)) 
+		return true;
+
+	// printf("copy1\n");
+	struct hash_iterator iter;
+	hash_first(&iter, &src->pages);
+	// printf("copy2\n");
+
+	// printf("bucket: %p elem: %p hash: %p\n", iter.bucket, iter.elem, iter.hash);
+	while (hash_next(&iter)) {
+		// parent's spt's page
+		// printf("copy3\n");
+
+		struct page *page = hash_entry(hash_cur(&iter), struct page, spt_elem);
+		// printf("thread name: %s, page frame: %p\n", page->t->name,page->frame);
+		// printf("copy4\n");
+		// printf("TYPE : %d\n", page->type);
+		if (!vm_alloc_page_with_initializer(page->type, page->va, page->writable, page->uninit.init, page->uninit.aux)) {
+			// errore handling USERTODO 
+			return false;
+		}
+		// printf("copy5\n");
+
+		struct page *child = spt_find_page(dst,page->va);
+		// printf("copy6\n");
+
+		if (!vm_do_claim_page(child)) {
+			// errore handling USERTODO
+			return false;
+		} 
+
+		if (page->frame == NULL)
+		{
+			vm_do_claim_page(page);
+		}
+		// copy on write
+		// printf("copy7\n");
+		// printf("page va: %p child va: %p\n", page->va, child->va);
+		// printf("child frame: %p\n", child->frame);
+		// printf("page frame: %p\n", page->frame);
+		// printf("child frame kva: %p, parent frame kva: %p\n", child->frame->kva, page->frame->kva);
+		memcpy(child->frame->kva, page->frame->kva, PGSIZE);
+		// printf("copy8\n");
+
+	}
+	return true;
 }
 
 /* Free the resource hold by the supplemental page table */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	if(hash_empty(&spt->pages)) 
+		return;
+
+	struct hash_iterator iter;
+	hash_first(&iter, &spt->pages);
+
+	while(hash_next(&iter)) {
+		struct page *page = hash_entry(hash_cur(&iter), struct page, spt_elem);
+		
+		destroy(page);
+	}
 }
 
 // addition for spt hash table
@@ -265,13 +346,13 @@ bool page_less_func (const struct hash_elem *a, const struct hash_elem *b, void 
 	const struct page *page_a = hash_entry(a, struct page, spt_elem);
 	const struct page *page_b = hash_entry(b, struct page, spt_elem);
 
-	return page_a-> va < page_b->va;
+	return page_a->va < page_b->va;
 }
 struct page* page_lookup (struct supplemental_page_table *spt, const void *address) {
   struct page p;
   struct hash_elem *e;
 
   p.va = address;
-  e = hash_find (&spt, &p.spt_elem);
+  e = hash_find (&spt->pages, &p.spt_elem);
   return e != NULL ? hash_entry (e, struct page, spt_elem) : NULL;
 }

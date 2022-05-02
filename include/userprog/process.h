@@ -10,4 +10,12 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (struct thread *next);
 
+// user addition for lazy loading
+struct Inform_load_file {
+	struct file *file;
+    off_t ofs;
+    off_t page_read_bytes;
+    off_t page_zero_bytes;
+};
+//
 #endif /* userprog/process.h */

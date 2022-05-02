@@ -7,6 +7,7 @@
 #include "intrinsic.h"
 
 /* Number of page faults processed. */
+
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
@@ -140,17 +141,19 @@ page_fault (struct intr_frame *f) {
 	write = (f->error_code & PF_W) != 0;
 	user = (f->error_code & PF_U) != 0;
 
-	syscall_exit(-1);
-
+	// syscall_exit(-1);
+	
 #ifdef VM
 	/* For project 3 and later. */
-	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))
-		return;
+	// printf("fault: %p round down %p\n", fault_addr, pg_round_down(fault_addr));
+	if (vm_try_handle_fault (f, fault_addr, user, write, not_present)){	
+		return; 
+	}
 #endif
 
 	/* Count page faults. */
 	page_fault_cnt++;
-
+	syscall_exit(-1);
 	
 
 	/* If the fault is true fault, show info and exit. */
@@ -159,8 +162,9 @@ page_fault (struct intr_frame *f) {
 			not_present ? "not present" : "rights violation",
 			write ? "writing" : "reading",
 			user ? "user" : "kernel"); 
-	
-	//kill (f);
+	// kill (f);
+	// syscall_exit(-1);
+
 	
 }
 

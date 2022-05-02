@@ -14,6 +14,11 @@
 #include "filesys/filesys.h"
 #include "lib/string.h"
 
+// for vm user addition
+#include "vm/vm.h"
+//
+
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -317,7 +322,6 @@ unsigned syscall_tell(int fd)
 
 void syscall_close(int fd_idx)
 {	
-
 	// closing stdin, stdout
 	if (is_stdin(fd_idx) || is_stdout(fd_idx)) {
 		thread_current()->fd_table[fd_idx] = false;
@@ -327,7 +331,7 @@ void syscall_close(int fd_idx)
 	struct file *file;
 		
 	if((file = find_file_by_fd(fd_idx)) == NULL)
-	{
+	{	
 		return;
 	}
 	
@@ -354,13 +358,18 @@ void syscall_close(int fd_idx)
 void is_valid_addr(const uint64_t *addr)	
 {
 	struct thread *curr = thread_current();
+	// printf("addr: %p\n", addr);
 	// check that address is NULL
-	if (addr == NULL || !(is_user_vaddr(addr)) || pml4_get_page(curr->pml4, addr) == NULL) 
+	if (addr == NULL 
+		|| !(is_user_vaddr(addr)) 
+		|| spt_find_page(&curr->spt, addr) == NULL)
+		
 		syscall_exit(-1);
 
 	// check address is not in user addr	
 	if(is_kernel_vaddr(addr))
 		syscall_exit(-1);
+
 }
 
 // return file or null

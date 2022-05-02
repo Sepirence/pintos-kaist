@@ -39,6 +39,7 @@ file_reopen (struct file *file) {
  * same inode as FILE. Returns a null pointer if unsuccessful. */
 struct file *
 file_duplicate (struct file *file) {
+
 	struct file *nfile = file_open (inode_reopen (file->inode));
 	if (nfile) {
 		nfile->pos = file->pos;
@@ -71,6 +72,7 @@ file_get_inode (struct file *file) {
  * Advances FILE's position by the number of bytes read. */
 off_t
 file_read (struct file *file, void *buffer, off_t size) {
+	// printf("file: %p, buffer: %p, size: %d pos: %d\n", file, buffer, size, file->pos);
 	off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
 	file->pos += bytes_read;
 	return bytes_read;

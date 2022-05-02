@@ -489,7 +489,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	sema_init(&t->synch_sema,0);
 	#endif
 	///////////////////////////////
+	
 	t->magic = THREAD_MAGIC;
+	
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
