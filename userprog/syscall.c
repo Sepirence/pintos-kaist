@@ -88,6 +88,8 @@ syscall_handler (struct intr_frame *f) {
 	
 	// DEBUG
 	// printf ("system call! %d\n",f->R.rax);
+
+	thread_current()->stack_rsp = f->rsp;
  
 	switch(f->R.rax)
 	{
@@ -235,8 +237,16 @@ int syscall_filesize(int fd)
 }
 
 int syscall_read(int fd, void *buffer, unsigned size)
-{
+{	
+	// fail => syscall exit
 	is_valid_addr(buffer);
+	
+	// checking buffer
+	// buffer should not be in code segment
+	struct page *buffer_page = spt_find_page(&thread_current()->spt, buffer);
+	if(!buffer_page->writable)
+		syscall_exit(-1);
+
 	int read_result;
 	
 
@@ -360,14 +370,11 @@ void is_valid_addr(const uint64_t *addr)
 	struct thread *curr = thread_current();
 	// printf("addr: %p\n", addr);
 	// check that address is NULL
+
 	if (addr == NULL 
-		|| !(is_user_vaddr(addr)) 
+		|| is_kernel_vaddr(addr)
 		|| spt_find_page(&curr->spt, addr) == NULL)
 		
-		syscall_exit(-1);
-
-	// check address is not in user addr	
-	if(is_kernel_vaddr(addr))
 		syscall_exit(-1);
 
 }

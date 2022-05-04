@@ -174,10 +174,14 @@ vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
+static bool
 vm_stack_growth (void *addr) {
-	// bool succ = vm_alloc_page(VM_ANON | VM_Marker_0, addr, true);
-	// return succ;
+	// printf("STACK GROWTH\n");
+	bool succ = vm_alloc_page(VM_ANON | VM_MARKER_0, addr, true);
+	if(succ){ 
+		thread_current()->stack_bottom -= PGSIZE;
+	}
+	return succ;
 }
 
 /* Handle the fault on write_protected page */
@@ -194,22 +198,31 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 	
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
-
-	// printf("addr: %p, user: %d, write: %d, not_present: %d\n", addr, user, write, not_present);
-	// printf("is kernel vaddr: %d\n", is_kernel_vaddr(addr));
-	
 	
 	// writing r/o page
 	if (!not_present) return false;
 	
-	// user && kernel_vaddr => false
-	if (user && is_kernel_vaddr(addr)) return false;
-
+	// kernel_vaddr => false 
+	if (is_kernel_vaddr(addr)) return false;
+	
 	// addr not in spt
 	if ((page = spt_find_page(spt, addr)) == NULL) {
-		
-		// printf("addr not in spt\n");
-		return false; 
+		// check stack
+		void *rsp = user ? f->rsp : thread_current()->stack_rsp;
+		void *stack_addr = thread_current()->stack_bottom - PGSIZE;
+		// base conditions
+		if(addr >= rsp - 8 && addr >= USER_STACK - 0x100000 && addr <= USER_STACK) {
+			//stack growth
+			if(vm_stack_growth(stack_addr)){
+				page = spt_find_page(spt, stack_addr); 
+			}
+			else {
+				return false;
+			}
+		}
+		else {
+			return false; 
+		}
 	}
 
 	// write && read_only => false
