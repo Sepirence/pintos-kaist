@@ -5,7 +5,6 @@
 
 // addition
 #include "lib/kernel/hash.h"
-// #include "iib/threads/synch.h" 
 //
 
 enum vm_type {
@@ -55,6 +54,7 @@ struct page {
 	struct thread *t; 
 	bool writable;
 	enum vm_type type;
+	// bool dirty_bit;
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
 	union {
@@ -97,13 +97,6 @@ struct page_operations {
 
 struct supplemental_page_table {
 	struct hash pages;
-	// struct semaphore sema_spt;
-};
-
-// addition for frame tabe
-struct frame_table {
-	struct list frames;
-	struct lock *frame_lock;	
 };
 
 #include "threads/thread.h"

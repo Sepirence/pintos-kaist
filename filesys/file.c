@@ -53,6 +53,7 @@ file_duplicate (struct file *file) {
 void
 file_close (struct file *file) {
 	if (file != NULL) {
+		// printf("FILE: %p CLOSE!\n", file);
 		file_allow_write (file);
 		inode_close (file->inode);
 		free (file);
@@ -74,6 +75,7 @@ off_t
 file_read (struct file *file, void *buffer, off_t size) {
 	// printf("file: %p, buffer: %p, size: %d pos: %d\n", file, buffer, size, file->pos);
 	off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
+	// printf("bytes read: %d\n", bytes_read);
 	file->pos += bytes_read;
 	return bytes_read;
 }

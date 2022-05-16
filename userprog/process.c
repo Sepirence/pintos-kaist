@@ -156,7 +156,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
-		palloc_free_page(newpage);
+		palloc_free_page(newpage); 
 		return false;
 	}
 	return true;
@@ -169,9 +169,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
-	
 	// curr is child
-	
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux; 
 	struct thread *current = thread_current ();
@@ -192,12 +190,10 @@ __do_fork (void *aux) {
 
 	process_activate (current);
 #ifdef VM
-
 	supplemental_page_table_init (&current->spt);
 
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;	
-	
 #else
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent)){
 		goto error;
@@ -208,7 +204,6 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-	
 	//
 	// if parent's file in fd_table is not null, then duplicate it
 	for(int i = 0; i < FDCOUNT_LIMIT; i++)
@@ -261,6 +256,7 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
+	// printf("EXEC\n");
 	char *file_name = f_name;
 	bool success;
 	/* We cannot use the intr_frame in the thread structure.
@@ -462,8 +458,9 @@ process_exit (void) {
 	
 	//
 	// current's pml4 destroy
-	process_cleanup ();
-	
+	// printf("exit\n");
+	// process_cleanup ();
+	supplemental_page_table_kill (&curr->spt);
 	//
 	// notice parent process
 	sema_up(&curr->wait_sema);

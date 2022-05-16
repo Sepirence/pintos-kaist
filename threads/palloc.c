@@ -262,7 +262,6 @@ palloc_init (void) {
 void *
 palloc_get_multiple (enum palloc_flags flags, size_t page_cnt) {
 	struct pool *pool = flags & PAL_USER ? &user_pool : &kernel_pool;
-
 	lock_acquire (&pool->lock);
 	size_t page_idx = bitmap_scan_and_flip (pool->used_map, 0, page_cnt, false);
 	lock_release (&pool->lock);
@@ -318,6 +317,7 @@ palloc_free_multiple (void *pages, size_t page_cnt) {
 #ifndef NDEBUG
 	memset (pages, 0xcc, PGSIZE * page_cnt);
 #endif
+	// printf("assert user map: %p\n", pool->used_map);
 	ASSERT (bitmap_all (pool->used_map, page_idx, page_cnt));
 	bitmap_set_multiple (pool->used_map, page_idx, page_cnt, false);
 }
@@ -325,6 +325,7 @@ palloc_free_multiple (void *pages, size_t page_cnt) {
 /* Frees the page at PAGE. */
 void
 palloc_free_page (void *page) {
+	// printf("palloc free page: %p\n", page);
 	palloc_free_multiple (page, 1);
 }
 

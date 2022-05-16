@@ -883,11 +883,11 @@ priority_calculation(void){
 	curr->original_priority = new_priority;
 }
 
-void check_preemption(void)
+bool check_preemption(void)
 {
 	if (list_empty(&ready_list))
 	{
-		return;
+		return false;
 	}
     
 	int curr_priority = thread_current()->priority;
@@ -896,6 +896,7 @@ void check_preemption(void)
     
 	if (curr_priority < t->priority)
 	{
-		thread_yield();
+		// thread_yield();
+		return true;
 	}
 }

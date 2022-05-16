@@ -149,7 +149,6 @@ struct thread {
 	struct supplemental_page_table spt;
 	void* stack_bottom;
 	void* stack_rsp;
-	
 #endif
 
 	/* Owned by thread.c. */
@@ -220,7 +219,7 @@ fp mul_int(fp x, int n);
 fp div_fp(fp x, fp y);
 fp div_int(fp x, int n);
 
-void check_preemption(void);
+bool check_preemption(void);
 
 
 

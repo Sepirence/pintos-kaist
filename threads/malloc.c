@@ -200,6 +200,7 @@ realloc (void *old_block, size_t new_size) {
    malloc(), calloc(), or realloc(). */
 void
 free (void *p) {
+	// printf("free: %p\n", p);
 	if (p != NULL) {
 		struct block *b = p;
 		struct arena *a = block_to_arena (b);

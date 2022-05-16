@@ -198,7 +198,7 @@ bitmap_set_all (struct bitmap *b, bool value) {
 void
 bitmap_set_multiple (struct bitmap *b, size_t start, size_t cnt, bool value) {
 	size_t i;
-
+	// printf("bitmap set %p, start: %d, cnt: %d, value: %d\n", b, start, cnt, value);
 	ASSERT (b != NULL);
 	ASSERT (start <= b->bit_cnt);
 	ASSERT (start + cnt <= b->bit_cnt);
@@ -258,6 +258,7 @@ bitmap_none (const struct bitmap *b, size_t start, size_t cnt) {
    exclusive, is set to true, and false otherwise. */
 bool
 bitmap_all (const struct bitmap *b, size_t start, size_t cnt) {
+	// printf("bitmap all bitmap: %p, start: %d, cnt: %d\n", b, start, cnt);
 	return !bitmap_contains (b, start, cnt, false);
 }
 
@@ -276,9 +277,10 @@ bitmap_scan (const struct bitmap *b, size_t start, size_t cnt, bool value) {
 		size_t last = b->bit_cnt - cnt;
 		size_t i;
 		for (i = start; i <= last; i++)
-			if (!bitmap_contains (b, i, cnt, !value))
-				return i;
+				if (!bitmap_contains (b, i, cnt, !value))
+					return i;
 	}
+
 	return BITMAP_ERROR;
 }
 

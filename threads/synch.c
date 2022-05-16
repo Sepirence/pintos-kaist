@@ -120,7 +120,16 @@ sema_up (struct semaphore *sema) {
 					struct thread, elem));
 	}
 	sema->value++;
-	check_preemption();
+	// check_preemption();
+	if (check_preemption()) {
+		if (intr_context()) {
+			// intr_yield_on_return();
+			// printf("Fdafab\n");
+		}
+		else {
+			thread_yield();
+		}
+	}
 	intr_set_level (old_level);
 }
 

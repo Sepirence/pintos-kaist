@@ -36,6 +36,8 @@ int 	 syscall_write(int fd, const void *buffer, unsigned size);
 void	 syscall_seek(int fd, unsigned position);
 unsigned syscall_tell(int fd);
 void	 syscall_close(int fd);
+void*	 syscall_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+void 	 syscall_munmap(void *addr);
 
 // extra
 int syscall_dup2(int oldfd, int newfd);
@@ -139,6 +141,12 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_DUP2:
 			f->R.rax = syscall_dup2(f->R.rdi, f->R.rsi);
 			break;
+		case SYS_MMAP:
+			f->R.rax = syscall_mmap(f->R.rdi,f->R.rsi,f->R.rdx,f->R.r10,f->R.r8);
+			break;
+		case SYS_MUNMAP:
+			syscall_munmap(f->R.rdi);
+			break;
 		default:
 			NOT_REACHED();
 			syscall_exit(-1);
@@ -154,7 +162,9 @@ void syscall_halt(void)
 void syscall_exit(int status) {
 	struct thread *curr = thread_current();
     curr->exit_status = status;
-
+	// bitmap_dump(0x8004239018); 
+	// printf("-----------------\n");
+	// bitmap_dump(0x800422e000); // user
 	printf("%s: exit(%d)\n", thread_name(), status);
 	
 	thread_exit();
@@ -192,7 +202,7 @@ int	syscall_wait(tid_t pid)
 }
 
 bool syscall_create(const char *file_name, unsigned initial_size)
-{
+{	
 	is_valid_addr(file_name);
 	return filesys_create(file_name, initial_size);
 }
@@ -332,6 +342,7 @@ unsigned syscall_tell(int fd)
 
 void syscall_close(int fd_idx)
 {	
+	// printf("close\n");
 	// closing stdin, stdout
 	if (is_stdin(fd_idx) || is_stdout(fd_idx)) {
 		thread_current()->fd_table[fd_idx] = false;
@@ -344,7 +355,6 @@ void syscall_close(int fd_idx)
 	{	
 		return;
 	}
-	
 	// syscall_dup2 fd_idx NULL로 초기화
 	struct thread *curr = thread_current();
 
@@ -365,10 +375,77 @@ void syscall_close(int fd_idx)
 	
 }
 
+void* syscall_mmap(void *addr, size_t length, int writable, int fd, off_t offset)
+{	
+	// addr == 0 => fail
+	if (addr == 0) 
+		return NULL;
+	
+	// addr is on kernel
+	if (is_kernel_vaddr(addr))
+		return NULL;
+
+	// length == 0 => fail
+	if (length == 0)
+		return NULL;
+	
+	// not page aligned => fail
+	if (pg_ofs(addr) != 0)
+		return NULL;
+
+	// if fd is stdin or stdout => fail
+	if (fd == 0 || fd == 1)
+		return NULL;
+	
+	// offset should be multiple of pagesize
+	if (offset % PGSIZE != 0)
+		return NULL;
+
+	// checking overlap
+	void *checking_mapped_addr = addr;
+	size_t number_of_page = length % PGSIZE == 0 ? length / PGSIZE : length / PGSIZE + 1;
+
+	while (number_of_page > 0) {
+		// addr is kernel
+		if (is_kernel_vaddr(checking_mapped_addr))
+			return NULL;
+		
+		// addr is mapped to page
+		if (spt_find_page(&thread_current()->spt, checking_mapped_addr))
+			return NULL;
+
+		// addr is in stack area
+		if (thread_current()->stack_bottom <= checking_mapped_addr 
+			&& checking_mapped_addr <= USER_STACK)
+			return NULL;
+			
+		checking_mapped_addr += PGSIZE;
+		number_of_page--;
+	}
+
+	// file from fd
+	struct file *file = find_file_by_fd(fd);
+	if (file == NULL) {
+		// error handling
+		return NULL;
+	}
+	
+	return do_mmap(addr, length, writable, file, offset);
+}
+
+void syscall_munmap(void *addr)
+{	
+	is_valid_addr(addr);
+	
+	do_munmap(addr);
+}
+
+
+
+
 void is_valid_addr(const uint64_t *addr)	
 {
 	struct thread *curr = thread_current();
-	// printf("addr: %p\n", addr);
 	// check that address is NULL
 
 	if (addr == NULL 
@@ -407,7 +484,7 @@ static int add_file_to_fdt(struct file *f)
 
 
 static void remove_file_from_fdt(int fd)
-{
+{	
 	struct thread *curr = thread_current();
 	if(fd < 0 || fd >= FDCOUNT_LIMIT)
 		return;
