@@ -436,6 +436,8 @@ process_exit (void) {
 	{
 		syscall_close(i);
 	}
+
+	file_close(curr->load_file);
 	
 	// free fd_table
 	palloc_free_page(curr->fd_table);
@@ -590,6 +592,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Open executable file. */
 	file = filesys_open (file_name);
+	thread_current()->load_file = file;
 	
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
@@ -838,9 +841,11 @@ lazy_load_segment (struct page *page, void *aux) {
 	if(read_byte != (int)ilf->page_read_bytes) 
 	{
 		// error handling USERTODO
+		free(ilf);
 		return false;
 	}
 	memset (page->frame->kva + ilf->page_read_bytes, 0, ilf->page_zero_bytes);
+	// free(ilf);
 	return true;
 }
 

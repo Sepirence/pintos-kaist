@@ -117,6 +117,8 @@ struct thread {
 	fp recent_cpu;
 	///
 
+	struct file *load_file;
+
 	
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

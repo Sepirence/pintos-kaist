@@ -161,10 +161,12 @@ vm_get_frame (void) {
 		free(frame);
 		struct frame *evicted_frame = vm_evict_frame();
 		// evict the page
-		if (evicted_frame == NULL) {
-			//error
-			return NULL;
-		}
+		// if (evicted_frame == NULL) {
+		// 	//error
+		// 	return NULL;
+		// }
+		ASSERT(evicted_frame != NULL);
+
 		list_push_back(&frame_table, &evicted_frame->ft_elem);
 		return evicted_frame;
 		// USERTODO
@@ -316,6 +318,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 		}
 		else if (VM_TYPE(page->operations->type) == VM_FILE) {
 			struct Inform_mmap_file *imf = (struct Inform_mmap_file *)malloc(sizeof(struct Inform_mmap_file));
+			if (imf == NULL) return false;
 			struct file_page *file_page = &page->file;
 			
 			imf->file = file_page->file;
@@ -327,13 +330,13 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 
 			if (!vm_alloc_page_with_initializer(page->type, page->va, page->writable, lazy_load_segment_file, imf)) {
 				// errore handling USERTODO 
+				free(imf);
 				return false;
 			}
 		}
 
 		struct page *child = spt_find_page(dst,page->va);
 		
-		// not COW
 		if (!vm_do_claim_page(child)) {
 			// errore handling USERTODO
 			return false;
@@ -343,7 +346,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 		{
 			vm_do_claim_page(page);
 		}
-		// copy on write
+
 		memcpy(child->frame->kva, page->frame->kva, PGSIZE);
 
 		// for COW

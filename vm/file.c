@@ -42,7 +42,10 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	file_page->mmap_addr = aux->mmap_addr;
 
 	file_page->number_of_pages = aux->number_of_page;
-
+	
+	
+	// file_close(aux->file);
+	// free(aux);
 	return true;
 }
 
@@ -128,15 +131,10 @@ void
 do_munmap (void *addr) {
 	struct thread *curr = thread_current();
 	struct page *page = spt_find_page(&curr->spt, addr);
+	
 	// addr is not mmap addr
-	if (page->file.mmap_addr != addr) {
-		syscall_exit(-1);
-	}
-
-	//
-	if (VM_TYPE(page_get_type(page)) != VM_FILE) {
-		return;
-	}
+	ASSERT(page->file.mmap_addr == addr);
+	ASSERT(VM_TYPE(page_get_type(page)) == VM_FILE);
 
 	// Then page is first page of mmap file
 	struct file *file = page->file.file;
@@ -146,9 +144,11 @@ do_munmap (void *addr) {
 		struct page *next_page = spt_find_page(&curr->spt, addr + PGSIZE * i);
 		
 		if (pml4_is_dirty(curr->pml4, next_page->va)) {
-			if (next_page->file.length != file_write_at(file, next_page->va, next_page->file.length, next_page->file.file_offset))
-				// error
-				return;
+			ASSERT(next_page->file.length == file_write_at(file, 
+														   next_page->va, 
+														   next_page->file.length, 
+														   next_page->file.file_offset));
+			pml4_set_dirty(curr->pml4, next_page->va, false);
 		}
 
 	}
@@ -167,9 +167,11 @@ lazy_load_segment_file (struct page *page, void *aux) {
 	if(read_byte != (int)imf->page_read_bytes) 
 	{	
 		// error handling USERTODO
+		free(imf);
 		return false;
 	}
 	memset (page->frame->kva + imf->page_read_bytes, 0, imf->page_zero_bytes);
-
+	// file_close(imf->file);
+	free(imf);
 	return true;
 }

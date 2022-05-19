@@ -68,6 +68,8 @@ uninit_destroy (struct page *page) {
 	struct uninit_page *uninit = &page->uninit;
 	/* TODO: Fill this function.
 	 * TODO: If you don't have anything to do, just return. */
-	
+	struct Inform_load_file *ilf = (struct Inform_load_file *)uninit->aux;
+	//file_close(ilf->file);
+	free(ilf);
 	return;
 }
