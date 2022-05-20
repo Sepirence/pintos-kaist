@@ -69,10 +69,14 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		
 		// project 4
 		else if(VM_TYPE(type) == VM_PAGE_CACHE) initializer = page_cache_initializer;
+		
+	
+
 		//
 		uninit_new(new_page, upage, init, type, aux, initializer);
 		
 		new_page->t = thread_current();
+		// new_page->writable = type & VM_MARKER_1 ? 0 : writable;
 		new_page->writable = writable;
 		new_page->type = type;
 
@@ -193,7 +197,26 @@ vm_stack_growth (void *addr) {
 
 /* Handle the fault on write_protected page */
 static bool
-vm_handle_wp (struct page *page UNUSED) {
+vm_handle_wp (struct page *page) {
+	
+	struct frame *org_frame = page->frame;
+
+	// org_frame->page = parent
+	// page->t.child_list = empty
+	// COW parent => 
+	// org_frame-> page = child1,2,3
+	// if (!list_empty(page->t->child_list)) {
+	// 	struct list_elem e = list_begin(page->t->child_list);
+	// 	struct thread *child_thread = list_entry(e, struct thread, child_elem);
+	// }
+	// spt => va X
+	// frame = page_list;
+	// frame 갖고와서 새롭게 할당해줘야 함
+	if (!vm_do_claim_page(page)) return false;
+
+	memcpy(page->frame->kva, org_frame->kva, PGSIZE);
+	
+	return true;
 }
 
 /* Return true on success */
@@ -233,7 +256,11 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 	}
 
 	// write && read_only => false
-	if (write && !page->writable) return false;
+	if (write && !page->writable) {
+		if (page->type & VM_MARKER_1) 
+			return vm_handle_wp(page);
+		return false;
+	}
 
 	return vm_do_claim_page (page);
 }
@@ -301,17 +328,22 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 		// parent's spt's page
 
 		struct page *page = hash_entry(hash_cur(&iter), struct page, spt_elem);
-
+		enum vm_type type = page->type;
+		if (page->writable) {
+			type = type | VM_MARKER_1;
+			page->type = type | VM_MARKER_1;
+			page->writable = false;
+		}
 		if (VM_TYPE(page->operations->type) == VM_UNINIT) {
 			
-			if (!vm_alloc_page_with_initializer(page->type, page->va, page->writable, page->uninit.init, page->uninit.aux)) {
+			if (!vm_alloc_page_with_initializer(type, page->va, page->writable, page->uninit.init, page->uninit.aux)) {
 				// errore handling USERTODO 
 				return false;
 			}
 		}
 		
 		else if (VM_TYPE(page->operations->type) == VM_ANON) {
-			if (!vm_alloc_page_with_initializer(page->type, page->va, page->writable, 0, 0)) {
+			if (!vm_alloc_page_with_initializer(type, page->va, page->writable, 0, 0)) {
 				// errore handling USERTODO 
 				return false;
 			} 
@@ -328,7 +360,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 			imf->page_read_bytes = file_page->length;
 			imf->page_zero_bytes = PGSIZE - imf->page_read_bytes;
 
-			if (!vm_alloc_page_with_initializer(page->type, page->va, page->writable, lazy_load_segment_file, imf)) {
+			if (!vm_alloc_page_with_initializer(type, page->va, page->writable, lazy_load_segment_file, imf)) {
 				// errore handling USERTODO 
 				free(imf);
 				return false;
@@ -337,17 +369,18 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 
 		struct page *child = spt_find_page(dst,page->va);
 		
-		if (!vm_do_claim_page(child)) {
-			// errore handling USERTODO
-			return false;
-		} 
+		// if (!vm_do_claim_page(child)) {
+		// 	// errore handling USERTODO
+		// 	return false;
+		// } 
 
 		if (page->frame == NULL)
 		{
 			vm_do_claim_page(page);
 		}
 
-		memcpy(child->frame->kva, page->frame->kva, PGSIZE);
+		child->frame = page->frame;
+		// memcpy(child->frame->kva, page->frame->kva, PGSIZE);
 
 		// for COW
 		// if (page->frame == NULL) {
