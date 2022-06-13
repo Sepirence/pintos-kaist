@@ -37,7 +37,7 @@ vm_anon_init (void) {
 /* Initialize the file mapping */
 bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
-	
+	// printf("anon initializer\n");
 	struct uninit_page *uninit = &page->uninit;
     memset(uninit, 0, sizeof(struct uninit_page));  
 	/* Set up the handler */
@@ -53,6 +53,7 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 /* Swap in the page by read contents from the swap disk. */
 static bool
 anon_swap_in (struct page *page, void *kva) {
+	// printf("swap in\n");
 	struct anon_page *anon_page = &page->anon;
 
 	if (bitmap_test(swap_table, anon_page->swap_idx) == false) {
@@ -84,6 +85,7 @@ anon_swap_out (struct page *page) {
 				   page->frame->kva + DISK_SECTOR_SIZE * i);
 	}
 	page->anon.swap_idx = bitmap_idx;
+	// printf("anon swap out: %d\n", bitmap_idx);
 	pml4_clear_page(page->t->pml4, page->va);
 	page->frame->page = NULL;
 	page->frame = NULL;

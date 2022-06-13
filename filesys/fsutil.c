@@ -77,7 +77,7 @@ fsutil_rm (char **argv) {
 void
 fsutil_put (char **argv) {
 	static disk_sector_t sector = 0;
-
+	// printf("argv: %s %s\n", argv[0] , argv[1]);
 	const char *file_name = argv[1];
 	struct disk *src;
 	struct file *dst;
@@ -103,7 +103,6 @@ fsutil_put (char **argv) {
 	size = ((int32_t *) buffer)[1];
 	if (size < 0)
 		PANIC ("%s: invalid file size %d", file_name, size);
-
 	/* Create destination file. */
 	if (!filesys_create (file_name, size))
 		PANIC ("%s: create failed", file_name);

@@ -54,6 +54,9 @@ struct page {
 	struct thread *t; 
 	bool writable;
 	enum vm_type type;
+	struct list shared_pages;
+	struct list_elem pages_elem;
+	bool is_needed_to_cow;
 	// bool dirty_bit;
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */

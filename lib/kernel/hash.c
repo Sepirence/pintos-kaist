@@ -121,6 +121,7 @@ hash_replace (struct hash *h, struct hash_elem *new) {
    null pointer if no equal element exists in the table. */
 struct hash_elem *
 hash_find (struct hash *h, struct hash_elem *e) {
+	// printf("hash_find: %p %p\n", h, e);
 	return find_elem (h, find_bucket (h, e), e);
 }
 

@@ -103,7 +103,7 @@ file_backed_destroy (struct page *page) {
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
-
+	// printf("mmap addr: %p size: %d writable: %d offset: %d\n", addr, length, writable, offset);
 	size_t f_len = file_length(file);
 	size_t number_of_page = length % PGSIZE == 0 ? length / PGSIZE : length / PGSIZE + 1;
 	void *page_addr = addr;
@@ -164,13 +164,16 @@ lazy_load_segment_file (struct page *page, void *aux) {
 	struct Inform_mmap_file *imf = (struct Inform_mmap_file *)aux;
 	file_seek(imf->file, imf->ofs);
 	int read_byte = file_read(imf->file, page->frame->kva, imf->page_read_bytes);
+
 	if(read_byte != (int)imf->page_read_bytes) 
 	{	
 		// error handling USERTODO
 		free(imf);
 		return false;
 	}
+	// printf("MEMSET_START\n");
 	memset (page->frame->kva + imf->page_read_bytes, 0, imf->page_zero_bytes);
+	// printf("MEMSET_END\n");
 	// file_close(imf->file);
 	free(imf);
 	return true;

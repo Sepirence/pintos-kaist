@@ -38,7 +38,11 @@ unsigned syscall_tell(int fd);
 void	 syscall_close(int fd);
 void*	 syscall_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
 void 	 syscall_munmap(void *addr);
-
+// bool 	 syscall_chdir(const char *dir);
+// bool     syscall_mkdir(const char *dir);
+// bool     syscall_readdir(int fd, char *name);
+// bool     syscall_isdir(int fd);
+// int      syscall_inumber(int fd);
 // extra
 int syscall_dup2(int oldfd, int newfd);
 static bool is_valid_file_descriptor(int fd);
@@ -89,7 +93,7 @@ syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
 	
 	// DEBUG
-	// printf ("system call! %d\n",f->R.rax);
+	// printf ("system call! %d %p\n",f->R.rax, f->);
 
 	thread_current()->stack_rsp = f->rsp;
  
@@ -105,8 +109,9 @@ syscall_handler (struct intr_frame *f) {
 			f->R.rax = syscall_fork(f->R.rdi,f);
 			break;
 		case SYS_EXEC:
-			if(syscall_exec(f->R.rdi) == -1)
+			if(syscall_exec(f->R.rdi) == -1) {
 				syscall_exit(-1);
+			}
 			break;
 		case SYS_WAIT:
 			f->R.rax = syscall_wait(f->R.rdi);
@@ -147,6 +152,21 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_MUNMAP:
 			syscall_munmap(f->R.rdi);
 			break;
+		// case SYS_CHDIR:
+		// 	syscall_chdir(f->R.rdi);
+		// 	break;
+		// case SYS_MKDIR:
+		// 	syscall_mkdir(f->R.rdi);
+		// 	break;
+		// case SYS_READDIR:
+		// 	syscall_readdir(f->R.rdi, f->R.rsi);
+		// 	break;
+		// case SYS_ISDIR:
+		// 	syscall_isdir(f->R.rdi);
+		// 	break;
+		// case SYS_INUMBER:
+		// 	syscall_inumber(f->R.rdi);
+		// 	break;
 		default:
 			NOT_REACHED();
 			syscall_exit(-1);
@@ -254,8 +274,10 @@ int syscall_read(int fd, void *buffer, unsigned size)
 	// checking buffer
 	// buffer should not be in code segment
 	struct page *buffer_page = spt_find_page(&thread_current()->spt, buffer);
-	if(!buffer_page->writable)
+	if(!buffer_page->writable) {
 		syscall_exit(-1);
+
+	}
 
 	int read_result;
 	
@@ -296,7 +318,7 @@ int syscall_read(int fd, void *buffer, unsigned size)
 }
 
 int syscall_write(int fd, const void *buffer, unsigned size)
-{
+{	// printf("syscall write %s\n", thread_name());
 	is_valid_addr(buffer);
 	
 	//invalid fd
@@ -440,7 +462,26 @@ void syscall_munmap(void *addr)
 	do_munmap(addr);
 }
 
+// bool syscall_chdir(const char *dir)
+// {
 
+// }
+// bool syscall_mkdir(const char *dir)
+// {
+
+// }
+// bool syscall_readdir(int fd, char *name)
+// {
+
+// }
+// bool syscall_isdir(int fd)
+// {
+
+// }
+// int  syscall_inumber(int fd)
+// {
+
+// } 
 
 
 void is_valid_addr(const uint64_t *addr)	
@@ -451,7 +492,7 @@ void is_valid_addr(const uint64_t *addr)
 	if (addr == NULL 
 		|| is_kernel_vaddr(addr)
 		|| spt_find_page(&curr->spt, addr) == NULL)
-		
+		 
 		syscall_exit(-1);
 
 }

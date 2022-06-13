@@ -6,6 +6,7 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "filesys/fat.h"
 #include "devices/disk.h"
 
 /* The disk that contains the file system. */
@@ -59,17 +60,36 @@ filesys_done (void) {
  * or if internal memory allocation fails. */
 bool
 filesys_create (const char *name, off_t initial_size) {
+
 	disk_sector_t inode_sector = 0;
 	struct dir *dir = dir_open_root ();
+	
+	// struct dir *target_dir = find_target_dir(root_dir, name);
+
 	bool success = (dir != NULL
-			&& free_map_allocate (1, &inode_sector)
+			&& fat_allocate (1, &inode_sector)
 			&& inode_create (inode_sector, initial_size)
 			&& dir_add (dir, name, inode_sector));
+		
+	// printf("succ: %d\n", success);
 	if (!success && inode_sector != 0)
-		free_map_release (inode_sector, 1);
+		// cluster 와 sector 생각하기
+		fat_remove_chain(inode_sector, 0);
 	dir_close (dir);
 
 	return success;
+// #else
+// 	disk_sector_t inode_sector = 0;
+// 	struct dir *dir = dir_open_root ();
+// 	bool success = (dir != NULL
+// 			&& free_map_allocate (1, &inode_sector)
+// 			&& inode_create (inode_sector, initial_size)
+// 			&& dir_add (dir, name, inode_sector));
+// 	if (!success && inode_sector != 0)
+// 		free_map_release (inode_sector, 1);
+// 	dir_close (dir);
+
+// 	return success;
 }
 
 /* Opens the file with the given NAME.
@@ -79,6 +99,7 @@ filesys_create (const char *name, off_t initial_size) {
  * or if an internal memory allocation fails. */
 struct file *
 filesys_open (const char *name) {
+	// printf("filesys open: %s\n", name);
 	struct dir *dir = dir_open_root ();
 	struct inode *inode = NULL;
 
@@ -110,6 +131,8 @@ do_format (void) {
 #ifdef EFILESYS
 	/* Create FAT and save it to the disk. */
 	fat_create ();
+	if (!dir_create (ROOT_DIR_SECTOR, 16))
+		PANIC ("root directory creation failed");
 	fat_close ();
 #else
 	free_map_create ();
@@ -119,4 +142,9 @@ do_format (void) {
 #endif
 
 	printf ("done.\n");
+}
+
+void path_parsing(const char *file_path) {
+
+	return;
 }

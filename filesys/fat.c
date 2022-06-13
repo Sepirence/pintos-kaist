@@ -140,6 +140,7 @@ fat_boot_create (void) {
 	unsigned int fat_sectors =
 	    (disk_size (filesys_disk) - 1)
 	    / (DISK_SECTOR_SIZE / sizeof (cluster_t) * SECTORS_PER_CLUSTER + 1) + 1;
+	// printf("boot create: %d\n", fat_sectors);
 	fat_fs->bs = (struct fat_boot){
 	    .magic = FAT_MAGIC,
 	    .sectors_per_cluster = SECTORS_PER_CLUSTER,
@@ -153,6 +154,44 @@ fat_boot_create (void) {
 void
 fat_fs_init (void) {
 	/* TODO: Your code goes here. */
+    fat_fs->fat_length = fat_fs->bs.fat_sectors * DISK_SECTOR_SIZE / (sizeof(cluster_t) * SECTORS_PER_CLUSTER);
+    fat_fs->data_start = fat_fs->bs.fat_start + fat_fs->bs.fat_sectors;
+	// printf("fat fs init: data start: %d\n", fat_fs->data_start);
+	// printf("fat fs init: fat start: %d sectors : %d\n", fat_fs->bs.fat_start,fat_fs->bs.fat_sectors);
+    // disk에 섹터는 20160개
+	// disk에 fat 섹터가 몇개냐 157개
+
+	// fat length 는 fat 섹터의 크기를 클러스터 단위로 몇개인지 나타낸거야
+	// 20096개 
+
+	// 총 disk 자체에 있는 섹터 수는 20160개
+	// fat_fs->fat 는 20096개를 수용하는 어레이
+
+	// fat[0] = disk[0]
+	// fat[20096] = disk[20096]
+
+	// fat[157] 까지는 fat 정보를 담아야되
+	// disk[157] 까지는 fat table 내용이되는거고
+	// disk[158] 부터는 데이터가 들어간다
+	// disk[158] = boot sector
+	// disk[159] ~
+
+	// fat table 이라는 것은
+	// fat_fs->fat = cluster_t abc[20096]
+	// fat_fs->fat[100] = 45
+
+    // 0번은 boot sector
+    // 1 ~ 157은 fat secotr
+    // 1 + 157 = 158
+    // 158번 부터 data 시작
+	
+	// clst start: 1 last clst: 157
+	fat_fs->last_clst = ROOT_DIR_CLUSTER + 1;
+    lock_init(&fat_fs->write_lock);
+    // fat open, create 하면서 
+    // fat는 cluster_t를 20096개 가지고 있는 array.
+	// fat[0] = nothing 할당 불가 <=> fat[158] = boot sector
+	// fat[1] = Root directory -> EOchain <=> fat[159]에 16개 엔트리 저장
 }
 
 /*----------------------------------------------------------------------------*/
@@ -165,6 +204,41 @@ fat_fs_init (void) {
 cluster_t
 fat_create_chain (cluster_t clst) {
 	/* TODO: Your code goes here. */
+	ASSERT(clst != EOChain);
+
+	cluster_t free_cluster;
+
+	if (clst == 0) {
+		free_cluster = find_free_cluster();
+		
+		// ASSERT(free_cluster != 0);
+		if (free_cluster == 0) {
+			// error handling
+			return 0;
+		}
+		
+		fat_put(free_cluster, EOChain);
+		// fat_fs->fat[fat_fs->data_start + free_cluster];
+		return free_cluster;
+	}
+
+	cluster_t next_clst = clst;
+	// unsigned int *fat = fat_fs->fat;
+	while (true) {
+		if (fat_get(next_clst) == EOChain) {
+			free_cluster = find_free_cluster();
+			// printf("fat create chain free cluster: %d\n", free_cluster);
+			if (free_cluster == 0) return 0;
+			
+			fat_put(next_clst, free_cluster);
+			fat_put(free_cluster, EOChain);
+			
+			return free_cluster;
+		}
+		next_clst = fat_get(next_clst);
+	}
+
+	NOT_REACHED();
 }
 
 /* Remove the chain of clusters starting from CLST.
@@ -172,22 +246,134 @@ fat_create_chain (cluster_t clst) {
 void
 fat_remove_chain (cluster_t clst, cluster_t pclst) {
 	/* TODO: Your code goes here. */
+
+	cluster_t _clst = clst;
+	cluster_t next_clst;
+
+	if (pclst != 0) ASSERT(fat_get(pclst) == clst);
+
+	while (true) {
+		next_clst = fat_get(_clst);
+		if (next_clst == 0) return;
+		fat_put(_clst, 0);
+
+		if (next_clst == EOChain) return;
+		_clst = next_clst;
+	}
+	NOT_REACHED();
 }
 
 /* Update a value in the FAT table. */
 void
 fat_put (cluster_t clst, cluster_t val) {
-	/* TODO: Your code goes here. */
+	/* TODO: Your code goes here. */  
+	lock_acquire(&fat_fs->write_lock);
+	// clst should not be boot sector
+	ASSERT(clst != 0); 
+
+	fat_fs->fat[clst] = val;
+	lock_release(&fat_fs->write_lock);
 }
 
 /* Fetch a value in the FAT table. */
 cluster_t
 fat_get (cluster_t clst) {
 	/* TODO: Your code goes here. */
+	// printf("fat get %d\n", clst);
+	return fat_fs->fat[clst];   
 }
 
 /* Covert a cluster # to a sector number. */
 disk_sector_t
 cluster_to_sector (cluster_t clst) {
 	/* TODO: Your code goes here. */
+	ASSERT(clst != 0);
+	ASSERT(clst > 0);
+	ASSERT(fat_fs->data_start + clst != fat_fs->bs.total_sectors);
+	ASSERT(fat_fs->data_start + clst < fat_fs->bs.total_sectors);
+	return fat_fs->data_start + clst;
 }
+
+bool fat_allocate(size_t cnt, disk_sector_t *sectorp) {
+	cluster_t start_clst = fat_create_chain(0);
+
+	if (start_clst == 0) return false;
+
+	cluster_t clst = start_clst;
+
+	for (size_t i = 1; i < cnt; i++) {
+		// printf("cnt: %d clst: %d\n", i, clst);
+		clst = fat_create_chain(clst);
+		// printf("after create chain cnt: %d clst: %d\n", i, clst);
+		if (clst == 0) {
+			// printf("error\n");
+			fat_remove_chain(start_clst, 0);
+			return false;
+		}
+	}
+	// data sector
+	*sectorp = cluster_to_sector(start_clst);
+	
+	return true;
+}
+
+cluster_t find_free_cluster() {
+
+	// clst: 0 ~ 20001 (20002)
+	cluster_t last_clst = (fat_fs->bs.total_sectors - fat_fs->bs.fat_sectors) - 2;
+	
+	// fat_fs->fat의 0번은 bs, 1번은 root directory
+	unsigned int *fat = fat_fs->fat;
+	for (cluster_t idx = 1; idx <= last_clst; idx++){
+		if (fat[idx] == 0) {
+			return idx;
+		}	
+	}
+	
+	return 0;
+}
+
+cluster_t sector_to_cluster(disk_sector_t sector) {
+	ASSERT(sector != fat_fs->data_start);
+	ASSERT(sector > fat_fs->data_start);
+	return sector - fat_fs->data_start;
+}
+
+cluster_t traverse(cluster_t start_cluster){
+	ASSERT(start_cluster != EOChain);
+	
+	// fat[3] = 5
+	// fat[5] = 4
+	// fat[4] = -1
+	
+	// travers(3)
+
+	// clst = 3
+	cluster_t clst = start_cluster;
+	
+	// fat_get(clst) = 5
+	// fat_get(clst) = 4
+	// fat_get(clst) = -1
+	while(fat_get(clst) != EOChain)
+		clst = fat_get(clst);
+		// clst = 5
+		// clst = 4
+	
+	// return clst = 4
+	return clst;
+}
+
+bool is_data_sector(disk_sector_t sector){
+	ASSERT(sector != fat_fs->data_start);
+	ASSERT(sector > fat_fs->data_start);
+	return true;
+}
+
+// bool is_cluster(cluster_t clst){
+// 	// check whether clst is cluster corressponidng sector
+// 	ASSERT(clst != 0);
+// 	ASSERT(clst > 0);
+// 	ASSERT(clst < fat_fs->data_start);
+// 	// ASSERT(1 <= clst && fat_fs->data_start > clst);
+// 	return true;
+// }

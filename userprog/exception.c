@@ -144,7 +144,7 @@ page_fault (struct intr_frame *f) {
 	
 #ifdef VM
 	/* For project 3 and later. */
-	// printf("fault: %p round down %p\n", fault_addr, pg_round_down(fault_addr));
+	// printf("fault: %p round down %p thread: %s ro: %d\n", fault_addr, pg_round_down(fault_addr), thread_name(), !not_present);
 	if (vm_try_handle_fault (f, fault_addr, user, write, not_present)){	
 		return; 
 	}

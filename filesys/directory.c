@@ -5,7 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
-
+#include "filesys/fat.h"
 /* A directory. */
 struct dir {
 	struct inode *inode;                /* Backing store. */
@@ -23,6 +23,9 @@ struct dir_entry {
  * given SECTOR.  Returns true if successful, false on failure. */
 bool
 dir_create (disk_sector_t sector, size_t entry_cnt) {
+	// printf("\ndir create sector: %d entr y cnt: %d dir entry size:%d\n", sector, entry_cnt, sizeof(struct dir_entry));
+	if (sector == ROOT_DIR_SECTOR)
+		sector = cluster_to_sector(sector);
 	return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
 }
 
@@ -46,7 +49,8 @@ dir_open (struct inode *inode) {
  * Return true if successful, false on failure. */
 struct dir *
 dir_open_root (void) {
-	return dir_open (inode_open (ROOT_DIR_SECTOR));
+	// printf("dir open root\n");
+	return dir_open (inode_open (cluster_to_sector(ROOT_DIR_SECTOR)));
 }
 
 /* Opens and returns a new directory for the same inode as DIR.
@@ -59,6 +63,7 @@ dir_reopen (struct dir *dir) {
 /* Destroys DIR and frees associated resources. */
 void
 dir_close (struct dir *dir) {
+	// printf("dir close %p\n", dir->inode);
 	if (dir != NULL) {
 		inode_close (dir->inode);
 		free (dir);
@@ -88,12 +93,14 @@ lookup (const struct dir *dir, const char *name,
 	for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
 			ofs += sizeof e)
 		if (e.in_use && !strcmp (name, e.name)) {
+
 			if (ep != NULL)
 				*ep = e;
 			if (ofsp != NULL)
 				*ofsp = ofs;
 			return true;
 		}
+
 	return false;
 }
 
@@ -104,6 +111,7 @@ lookup (const struct dir *dir, const char *name,
 bool
 dir_lookup (const struct dir *dir, const char *name,
 		struct inode **inode) {
+	// printf("dir lookup\n");
 	struct dir_entry e;
 
 	ASSERT (dir != NULL);
@@ -125,6 +133,7 @@ dir_lookup (const struct dir *dir, const char *name,
  * error occurs. */
 bool
 dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector) {
+	// printf("dir add name: %s\n", name);
 	struct dir_entry e;
 	off_t ofs;
 	bool success = false;
@@ -151,14 +160,16 @@ dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector) {
 			ofs += sizeof e)
 		if (!e.in_use)
 			break;
-
+	// printf("e name: %s\n",e.name);
 	/* Write slot. */
 	e.in_use = true;
 	strlcpy (e.name, name, sizeof e.name);
 	e.inode_sector = inode_sector;
+	// printf("inode_write at: %d\n", inode_write_at (dir->inode, &e, sizeof e, ofs));
 	success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-
+	// printf("dir_add : %d\n", success);
 done:
+	
 	return success;
 }
 
@@ -167,6 +178,7 @@ done:
  * which occurs only if there is no file with the given NAME. */
 bool
 dir_remove (struct dir *dir, const char *name) {
+	// printf("dir remove: %s\n", name);
 	struct dir_entry e;
 	struct inode *inode = NULL;
 	bool success = false;

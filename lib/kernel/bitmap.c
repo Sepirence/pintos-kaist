@@ -179,6 +179,8 @@ bitmap_flip (struct bitmap *b, size_t bit_idx) {
 /* Returns the value of the bit numbered IDX in B. */
 bool
 bitmap_test (const struct bitmap *b, size_t idx) {
+	// if (idx > b->bit_cnt)
+		// printf("bitmap : %p %d idx: %d\n", b, b->bit_cnt,idx);
 	ASSERT (b != NULL);
 	ASSERT (idx < b->bit_cnt);
 	return (b->bits[elem_idx (idx)] & bit_mask (idx)) != 0;

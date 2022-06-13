@@ -256,8 +256,8 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	// printf("EXEC\n");
 	char *file_name = f_name;
+
 	bool success;
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -301,7 +301,6 @@ process_exec (void *f_name) {
 	// ===================================================
 	
 	success = load(file_name, &_if);
-
 	if(!success){
 		// PALLOC_SYS_EXEC free
 		palloc_free_page(file_name);
@@ -323,7 +322,7 @@ process_exec (void *f_name) {
 		free(argv);
 		return -1;
 	}
-
+	// printf("exec1\n");
 	for(int i = argc - 1; i >=0 ; i--)
 	{
 		
@@ -361,7 +360,11 @@ process_exec (void *f_name) {
 	free(argv);
 	free(argp);
 	/* Start switched process. */
+	// printf("exec2\n");
+
 	do_iret (&_if);
+	// printf("exec3\n");
+
 	NOT_REACHED ();
 }
 
@@ -592,6 +595,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Open executable file. */
 	file = filesys_open (file_name);
+	// printf("process load\n");
 	thread_current()->load_file = file;
 	
 	if (file == NULL) {
@@ -678,6 +682,7 @@ done:
 	/* We arrive here whether the load is successful or not. */
 	// file_close (file); 
 	// turned off by user
+	// printf("process load: %d\n", success);
 	return success;
 }
 
@@ -835,9 +840,11 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	// printf("lazy load segment page: %p\n", page->va);
 	struct Inform_load_file *ilf = (struct Inform_load_file *)aux;
 	file_seek(ilf->file, ilf->ofs);
 	int read_byte = file_read(ilf->file, page->frame->kva, ilf->page_read_bytes);
+	// printf("lazy load file read end\n");
 	if(read_byte != (int)ilf->page_read_bytes) 
 	{
 		// error handling USERTODO
@@ -869,7 +876,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
-	while (read_bytes > 0 || zero_bytes > 0) {
+	// printf("load segment ofs: %d upage: %p read bytes: %d zeor bytes: %d writable: %d\n", ofs, upage, read_bytes, zero_bytes, writable);
+	while ((read_bytes > 0 || zero_bytes > 0)) {
+		
+		
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
@@ -885,15 +895,26 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		ilf->ofs = ofs;
 		ilf->page_read_bytes = page_read_bytes;
 		ilf->page_zero_bytes = page_zero_bytes;
-
+		
+		read_bytes -= page_read_bytes;
+		zero_bytes -= page_zero_bytes;
+		ofs += page_read_bytes;
+		
+		// if (!(read_bytes > 0 || zero_bytes > 0))
+		// 	{	
+		// 		printf("wriable: %d\n", writable);
+		// 		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable|1, lazy_load_segment, (void *)ilf))
+		// 			return false;
+		// 		break;
+		// 	}
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
 					writable, lazy_load_segment, (void *)ilf))
 			return false;
+		
 		/* Advance. */
-		read_bytes -= page_read_bytes;
-		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
-		ofs += page_read_bytes;
+		
+
 	}
 	return true;
 }

@@ -15,13 +15,16 @@ struct file {
  * allocation fails or if INODE is null. */
 struct file *
 file_open (struct inode *inode) {
+	// printf("file open\n");
 	struct file *file = calloc (1, sizeof *file);
 	if (inode != NULL && file != NULL) {
+		// printf("file open succeeded\n");
 		file->inode = inode;
 		file->pos = 0;
 		file->deny_write = false;
 		return file;
 	} else {
+		// printf("file_open failed\n");
 		inode_close (inode);
 		free (file);
 		return NULL;
@@ -39,7 +42,6 @@ file_reopen (struct file *file) {
  * same inode as FILE. Returns a null pointer if unsuccessful. */
 struct file *
 file_duplicate (struct file *file) {
-
 	struct file *nfile = file_open (inode_reopen (file->inode));
 	if (nfile) {
 		nfile->pos = file->pos;
@@ -73,9 +75,9 @@ file_get_inode (struct file *file) {
  * Advances FILE's position by the number of bytes read. */
 off_t
 file_read (struct file *file, void *buffer, off_t size) {
-	// printf("file: %p, buffer: %p, size: %d pos: %d\n", file, buffer, size, file->pos);
+	// printf("file read file: %p, buffer: %p, size: %d pos: %d\n", file, buffer, size, file->pos);
 	off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
-	// printf("bytes read: %d\n", bytes_read);
+	// printf("file read bytes read: %d\n", bytes_read);
 	file->pos += bytes_read;
 	return bytes_read;
 }
@@ -99,6 +101,8 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) {
  * Advances FILE's position by the number of bytes read. */
 off_t
 file_write (struct file *file, const void *buffer, off_t size) {
+	// printf("file write file: %p, buffer: %p, size: %d pos: %d\n", file, buffer, size, file->pos);
+	
 	off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
 	file->pos += bytes_written;
 	return bytes_written;
@@ -114,6 +118,7 @@ file_write (struct file *file, const void *buffer, off_t size) {
 off_t
 file_write_at (struct file *file, const void *buffer, off_t size,
 		off_t file_ofs) {
+	// printf("file write at size: %d\n", size);
 	return inode_write_at (file->inode, buffer, size, file_ofs);
 }
 

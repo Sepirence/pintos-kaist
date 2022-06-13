@@ -209,6 +209,7 @@ disk_size (struct disk *d) {
    per-disk locking is unneeded. */
 void
 disk_read (struct disk *d, disk_sector_t sec_no, void *buffer) {
+	// printf("disk read sec_no: %d buffer: %p\n", sec_no, buffer);
 	struct channel *c;
 
 	ASSERT (d != NULL);
@@ -233,6 +234,7 @@ disk_read (struct disk *d, disk_sector_t sec_no, void *buffer) {
    per-disk locking is unneeded. */
 void
 disk_write (struct disk *d, disk_sector_t sec_no, const void *buffer) {
+	// printf("disk write sec_no: %d buffer: %p\n", sec_no, buffer);
 	struct channel *c;
 
 	ASSERT (d != NULL);
