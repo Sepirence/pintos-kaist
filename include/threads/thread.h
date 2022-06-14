@@ -153,6 +153,13 @@ struct thread {
 	void* stack_rsp;
 #endif
 
+#ifdef EFILESYS
+	// struct dir *current_dir;
+	// char *current_dir;
+	// char *previous_dir;
+	char current_dir[50];
+#endif
+
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */

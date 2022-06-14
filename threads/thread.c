@@ -482,12 +482,16 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->nice = 0;
 	t->recent_cpu = int_to_fp(0);
 	///////////////////////////////
-	#ifdef USERPROG
+	// #ifdef USERPROG
 	list_init(&t->child_list);
 	sema_init(&t->fork_sema,0);
 	sema_init(&t->wait_sema,0);
 	sema_init(&t->synch_sema,0);
-	#endif
+	// #endif
+	// t->current_dir = malloc(sizeof(char));
+	t->current_dir[0] = '/';
+	t->current_dir[1] = '\0';
+
 	///////////////////////////////
 	
 	t->magic = THREAD_MAGIC;

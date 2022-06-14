@@ -196,6 +196,7 @@ inode_open (disk_sector_t sector) {
 	inode->open_cnt = 1;
 	inode->deny_write_cnt = 0;
 	inode->removed = false;
+	inode->is_dir = false;
 	disk_read (filesys_disk, inode->sector, &inode->data);
 	return inode;
 }
@@ -228,16 +229,15 @@ inode_close (struct inode *inode) {
 	if (--inode->open_cnt == 0) {
 		/* Remove from inode list and release lock. */
 		list_remove (&inode->elem);
-
+		disk_write(filesys_disk, inode->sector, &inode->data);
 		/* Deallocate blocks if removed. */
 		if (inode->removed) {
 			// inode					inode->sector = inode disk's location in disk
 			// inode disk = inode.data  inode->data.start = inode disk's data(file) start location in disk
-			
-			// removing inode disk
+			// writing the data of disk
+			// removing fat chain
 			fat_remove_chain(inode->sector, 0);
 			fat_remove_chain(inode->data.start, 0);
-			// further to do, may need to remove the data of disk
 		}
 		free (inode); 
 	}
@@ -328,12 +328,13 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 	// write after EOF
 	if (offset + size > inode->data.length) {
 		// example
-		// inode data length: 1000
-		// offset: 1200
-		// size: 250
-		// EOF: 1000
+		// inode data length: 1000	현재 보유 sector: 2 (1024B)
+		// offset: 1200			
+		// size: 250				1450 원함 => sector 1개 증가 (1536B) 
+		// EOF: 1000				inode data length = 1450
 		// 450 => 1 sector
 		// cnt = 0 
+
 		size_t cnt = ((offset + size) - inode->data.length) / DISK_SECTOR_SIZE + 1;
 
 		// find last data sector
@@ -353,7 +354,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 			disk_write(filesys_disk, cluster_to_sector(new_cluster), zeros);
 			last_cluster = new_cluster;
 		}
-		inode->data.length += cnt * DISK_SECTOR_SIZE;
+		inode->data.length += (offset + size) - inode->data.length;
 	}
 	// EOF이후 write를 위한 추가 할당 완료
 	
@@ -426,4 +427,12 @@ inode_allow_write (struct inode *inode) {
 off_t
 inode_length (const struct inode *inode) {
 	return inode->data.length;
+}
+
+bool inode_is_dir(const struct inode *inode) {
+	return inode->is_dir;
+}
+
+void inode_tag_dir(struct inode *inode) {
+	inode->is_dir = true;
 }

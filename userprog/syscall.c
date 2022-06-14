@@ -13,7 +13,7 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "lib/string.h"
-
+#include "filesys/inode.h"
 // for vm user addition
 #include "vm/vm.h"
 //
@@ -41,8 +41,9 @@ void 	 syscall_munmap(void *addr);
 // bool 	 syscall_chdir(const char *dir);
 // bool     syscall_mkdir(const char *dir);
 // bool     syscall_readdir(int fd, char *name);
-// bool     syscall_isdir(int fd);
-// int      syscall_inumber(int fd);
+bool     syscall_isdir(int fd);
+int      syscall_inumber(int fd);
+// int		 syscall_symlink(const char* target, const char* linkpath);
 // extra
 int syscall_dup2(int oldfd, int newfd);
 static bool is_valid_file_descriptor(int fd);
@@ -153,19 +154,22 @@ syscall_handler (struct intr_frame *f) {
 			syscall_munmap(f->R.rdi);
 			break;
 		// case SYS_CHDIR:
-		// 	syscall_chdir(f->R.rdi);
+		// 	f->R.rax = syscall_chdir(f->R.rdi);
 		// 	break;
 		// case SYS_MKDIR:
-		// 	syscall_mkdir(f->R.rdi);
+		// 	f->R.rax = syscall_mkdir(f->R.rdi);
 		// 	break;
 		// case SYS_READDIR:
-		// 	syscall_readdir(f->R.rdi, f->R.rsi);
+		// 	f->R.rax = syscall_readdir(f->R.rdi, f->R.rsi);
 		// 	break;
-		// case SYS_ISDIR:
-		// 	syscall_isdir(f->R.rdi);
-		// 	break;
-		// case SYS_INUMBER:
-		// 	syscall_inumber(f->R.rdi);
+		case SYS_ISDIR:
+			f->R.rax = syscall_isdir(f->R.rdi);
+			break;
+		case SYS_INUMBER:
+			f->R.rax = syscall_inumber(f->R.rdi);
+			break;
+		// case SYS_SYMLINK:
+		// 	f->R.rax = syscall_symlink(f->R.rdi, f->R.rsi);
 		// 	break;
 		default:
 			NOT_REACHED();
@@ -464,7 +468,8 @@ void syscall_munmap(void *addr)
 
 // bool syscall_chdir(const char *dir)
 // {
-
+// 	struct thread *curr = thread_current();
+// 	curr->current_dir
 // }
 // bool syscall_mkdir(const char *dir)
 // {
@@ -474,15 +479,27 @@ void syscall_munmap(void *addr)
 // {
 
 // }
-// bool syscall_isdir(int fd)
+bool syscall_isdir(int fd)
+{
+	struct file *file = find_file_by_fd(fd);
+	ASSERT(file != NULL);
+	// if (file == NULL)
+	// 	return false;
+	return inode_is_dir(file->inode);
+}
+int syscall_inumber(int fd)
+{
+	struct file *file = find_file_by_fd(fd);
+	ASSERT(file != NULL);
+	// if (file == NULL)
+	// 	return -1;
+
+	return inode_get_inumber(file->inode);
+} 
+// int syscall_symlink(const char* target, const char* linkpath)
 // {
 
 // }
-// int  syscall_inumber(int fd)
-// {
-
-// } 
-
 
 void is_valid_addr(const uint64_t *addr)	
 {

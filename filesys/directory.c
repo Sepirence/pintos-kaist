@@ -11,12 +11,17 @@ struct dir {
 	struct inode *inode;                /* Backing store. */
 	off_t pos;                          /* Current position. */
 };
+// file -> inode
+// dir -> inode
+// inode -> inode_disk 
+// inode_disk->data (entry entry entry)
 
 /* A single directory entry. */
 struct dir_entry {
 	disk_sector_t inode_sector;         /* Sector number of header. */
 	char name[NAME_MAX + 1];            /* Null terminated file name. */
 	bool in_use;                        /* In use or free? */
+	
 };
 
 /* Creates a directory with space for ENTRY_CNT entries in the
@@ -35,6 +40,7 @@ struct dir *
 dir_open (struct inode *inode) {
 	struct dir *dir = calloc (1, sizeof *dir);
 	if (inode != NULL && dir != NULL) {
+		inode_tag_dir(inode);
 		dir->inode = inode;
 		dir->pos = 0;
 		return dir;
@@ -117,11 +123,12 @@ dir_lookup (const struct dir *dir, const char *name,
 	ASSERT (dir != NULL);
 	ASSERT (name != NULL);
 
-	if (lookup (dir, name, &e, NULL))
+	if (lookup (dir, name, &e, NULL)) {
 		*inode = inode_open (e.inode_sector);
-	else
+	}
+	else {
 		*inode = NULL;
-
+	}
 	return *inode != NULL;
 }
 
