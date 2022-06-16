@@ -538,8 +538,8 @@ bool syscall_isdir(int fd)
 	if (file == NULL)
 		return false;
 
-	// bool res = inode_is_dir(file->inode);
-	bool res = true;
+	bool res = inode_is_dir(file->inode);
+	// bool res = true;
 	// printf("%d\n",res);
 
 	return res;

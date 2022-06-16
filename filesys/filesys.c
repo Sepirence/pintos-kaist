@@ -127,6 +127,7 @@ filesys_create (const char *name, off_t initial_size) {
  * or if an internal memory allocation fails. */
 struct file *
 filesys_open (const char *name) {
+	// printf("open %s %p\n", name, name);
 	if (strlen(name) == 0)
 		return NULL;
 	// printf("filesys open1\n");
@@ -165,7 +166,10 @@ filesys_open (const char *name) {
 	// if(dir_lookup(dir, last_path, &inode)){}
 	// printf("filesys open5\n");
 	if (prev_dir != NULL)
-		dir_lookup (prev_dir, last_name, &inode);
+		if(!dir_lookup (prev_dir, last_name, &inode)) {
+			free(last_name);
+			return NULL;
+		}
 	// dir_close(dir);
 
 	// printf("filesys open6 %p\n", inode);
@@ -173,7 +177,7 @@ filesys_open (const char *name) {
 	dir_close (prev_dir);
 	// printf("filesys open7\n");
 	free(last_name);
-	// printf("filesys open end1 %d\n", inode_is_symlink(inode));
+	// printf("filesys open end1 %d\n", inode);
 	if (!inode_is_symlink(inode))
 		return file_open (inode);
 	// printf("filesys open end2\n");
@@ -245,6 +249,7 @@ do_format (void) {
 	dir_add(root_dir, ".", cluster_to_sector(ROOT_DIR_SECTOR));
 	dir_add(root_dir, "..", cluster_to_sector(ROOT_DIR_SECTOR));
 	dir_close(root_dir);
+	
 	fat_close ();
 #else
 	free_map_create ();
