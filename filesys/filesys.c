@@ -30,7 +30,7 @@ filesys_init (bool format) {
 
 	if (format)
 		do_format ();
-
+	thread_current()->current_dir = dir_open_root();
 	fat_open ();
 #else
 	/* Original FS */
@@ -61,37 +61,57 @@ filesys_done (void) {
  * or if internal memory allocation fails. */
 bool
 filesys_create (const char *name, off_t initial_size) {
-	// printf("filesys create\n");
+	// printf("filesys create, %s %p\n", name, name);
+	if (strlen(name) == 0)
+		return false;
+	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) 
+		return false;
 	// filesys create(/a/b/c);
 	// /a/b : e, f, d
 	// c가 /a/b로 가서 거기에 없어야함.
-
-	// 새롭게 inode할당을 해주어서
-	// c를 /a/b : e, f, d, c
-
-	disk_sector_t inode_sector = 0;
-	// struct dir *dir = dir_open_root ();
-
-	// struct dir *root_dir = dir_open_root ();
-	char *processed_path = path_pre_processing(name);
-	struct dir *dir = get_prev_dir(processed_path);
-	// printf("filesys create processed_path: %s dir: %p\n", processed_path, dir);
-	char *last_path = get_last_path(processed_path);
-	// printf("last path: %s\n", last_path);
-	struct inode *inode;
-	if (dir_lookup(dir, last_path, &inode)) {
-		dir_close(dir);
+	char *last_name = malloc(sizeof(char) * (strlen(name) + 1));
+	// printf("name: %s\n", name);
+	struct dir *prev_dir = get_prev_dir(name, last_name);
+	// printf("current dir inode: %p create: %s lastname: %s\n",dir_get_inode(thread_current()->current_dir), name, last_name);
+	// printf("create is valid dir? :%d\n", is_valid_directory(prev_dir));
+	if(!is_valid_directory(prev_dir)){
+		free(last_name);
 		return false;
 	}
-
-	bool success = (dir != NULL
+	// 새롭게 inode할당을 해주어서
+	// c를 /a/b : e, f, d, c
+	// printf("prev dir: %p curr dir: %p\n", prev_dir, thread_current()->current_dir);
+	
+	if (strcmp(last_name, ".") == 0 || strcmp(last_name, "..") == 0) {
+		free(last_name);
+		return false;
+	}
+	
+	disk_sector_t inode_sector = 0;
+	
+	// bool success = fat_allocate(1, &inode_sector);
+	// printf("success: %d\n", success);
+	// success = success & inode_create (inode_sector, initial_size, false);
+	// printf("success: %d\n", success);
+	// success = success & dir_add (prev_dir, last_name, inode_sector);
+	// printf("success: %d\n", success);
+	
+	bool success = (prev_dir != NULL
 			&& fat_allocate (1, &inode_sector)
-			&& inode_create (inode_sector, initial_size)
-			&& dir_add (dir, name, inode_sector));
-		
+			&& inode_create (inode_sector, initial_size, false)
+			&& dir_add (prev_dir, last_name, inode_sector));
+	
+
 	if (!success && inode_sector != 0)
 		fat_remove_chain(inode_sector, 0);
-	dir_close (dir);
+	// if (!dir_lookup(dir, last_path, &inode)) {
+	// 	dir_close(dir);
+	// 	return false;
+	// }
+
+	// inode_tag_dir(inode);
+	dir_close (prev_dir);
+	free(last_name);
 	return success;
 }
 
@@ -102,24 +122,46 @@ filesys_create (const char *name, off_t initial_size) {
  * or if an internal memory allocation fails. */
 struct file *
 filesys_open (const char *name) {
-	// printf("filesys open\n");
+	// printf("filesys open %s in thread: %s\n", name, thread_name());
+	// printf("curr dir: %p\n", thread_current()->current_dir);
 	// case 1: /a/b/c 
 	// case 2: c (/a/b)
-	// struct dir *dir = dir_open_root ();
-	// struct dir *root_dir = dir_open_root ();
-	struct inode *inode = NULL;
-	char *processed_path = path_pre_processing(name);
+	// printf("filesys open name: %s\n", name);
+	// if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return NULL;
+	// printf("filesys open2\n");
+	if (strcmp(name, "/") == 0) {
+		struct dir *root_dir = dir_open_root();
+		struct inode *inode = dir_get_inode(root_dir);
+		dir_close(root_dir);
+		return file_reopen(inode);
+	}
+	// printf("filesys open3\n");
+
+	char *last_name = malloc(sizeof(char) * (strlen(name) + 1));
+	struct dir *prev_dir = get_prev_dir(name, last_name);
 	
-	struct dir *dir = get_prev_dir(processed_path);
-	char *last_path = get_last_path(processed_path);
+	// printf("filesys open: prev dir: %p name: %s lastname: %s\n", prev_dir,name, last_name);
+	printf("filesys open: last name: %s\n", last_name);
+	// if (strcmp(last_name, ".") == 0 || strcmp(last_name, "..") == 0) {
+	// 	free(last_name);
+	// 	return false;
+	// }
+	struct inode *inode = NULL;
+	// char *processed_path = path_pre_processing(name);
+	// printf("%s\n", processed_path);
+	// struct dir *dir = get_prev_dir(name, last_name);
+	// printf("root: %p dir: %p\n", root_dir, dir);
+	// char *last_path = get_last_path(processed_path);
+	// printf("%s\n", last_path);
 
 	// if(dir_lookup(dir, last_path, &inode)){}
 
-	if (dir != NULL)
-		dir_lookup (dir, last_path, &inode);
+	if (prev_dir != NULL)
+		dir_lookup (prev_dir, last_name, &inode);
 	// dir_close(dir);
-	dir_close (dir);
-
+	dir_close (prev_dir);
+	free(last_name);
+	// printf("filesys open end\n");
 	return file_open (inode);
 }
 
@@ -129,18 +171,44 @@ filesys_open (const char *name) {
  * or if an internal memory allocation fails. */
 bool
 filesys_remove (const char *name) {
-	// printf("filesys remove\n");
+	// printf("filesys remove current dir inode: %p name: %s\n", dir_get_inode(thread_current()->current_dir), name);
 	// struct dir *dir = dir_open_root ();
 	// struct dir *root_dir = dir_open_root ();
-	char *processed_path = path_pre_processing(name);
-
-	struct dir *dir = get_prev_dir(processed_path);
-	char *last_path = get_last_path(processed_path);
+	// char *processed_path = path_pre_processing(name);
+	// printf("processed path: %s thread path: %s\n", processed_path, thread_current()->current_dir);
 	
-	bool success = dir != NULL && dir_remove (dir, last_path);
-	// dir_close(dir);
-	dir_close (dir);
+	// if (strcmp(thread_current()->current_dir, processed_path) == 0) return false;
+	char *last_name = malloc(sizeof(char) * (strlen(name) + 1));
+	struct dir *prev_dir = get_prev_dir(name, last_name);
+	// struct dir *dir = get_prev_dir(processed_path);
+	// char *last_path = get_last_path(processed_path);
+	// char n[15];
+	// if (dir_readdir(dir, n)) return false;
+	struct inode *inode;
+	if (!dir_lookup(prev_dir, last_name, &inode)) {
+		free(last_name);
+		return false;
+	}
+	// /a prev / last name a
+	// a 에대한 디렉토리를 들고왔고 
+	// is empty a?
+	// lookup
 
+	if(inode_is_dir(inode)) {
+		struct dir *_dir = dir_open(inode);
+		char *name = malloc(sizeof(char) * 15);
+		if(dir_readdir(_dir, name)){
+			free(last_name);
+			free(name);
+			return false;
+		}
+		free(name);
+	}
+
+	bool success = prev_dir != NULL && dir_remove (prev_dir, last_name);
+	// dir_close(dir);
+	dir_close (prev_dir);
+	free(last_name);
 	return success;
 }
 
@@ -166,184 +234,117 @@ do_format (void) {
 }
 
 
+bool filesys_create_dir(const char *name) {
+	// dir entry = 16
+	if (strlen(name) == 0)
+		return false;
+	
+	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) 
+		return false;
+	
+	bool success = false;
+	char *last_name = malloc(sizeof(char) * (strlen(name) + 1));
+	struct dir *prev_dir = get_prev_dir(name, last_name);
 
-bool is_absolute_path(const char *path) {
-	if (path[0] == '/') {
-		return true;
+	if (strcmp(last_name, ".") == 0 || strcmp(last_name, "..") == 0) {
+		free(last_name);
+		return false;
 	}
-	return false;
+	
+	if (prev_dir == NULL) {
+		dir_close(prev_dir);
+		free(last_name);
+		return false;
+	}
+
+	disk_sector_t inode_sector = 0;
+	// struct dir *dir;
+	struct inode *sub_inode;
+	struct dir *sub_dir = NULL;
+	
+	
+	// 현재 /
+	// a 만들기
+	// /a : . -> /a .. -> / 
+	success = (
+		prev_dir != NULL
+		// 새롭게 폴더 하나 할당
+		&& fat_allocate(1, &inode_sector)
+		// 폴더 만들기
+		&& dir_create(inode_sector, 16)
+		// 이전 폴더에 만든 폴더 연결
+		&& dir_add(prev_dir, last_name, inode_sector)
+		// 만든 폴더로 이동
+		&& dir_lookup(prev_dir, last_name, &sub_inode)
+		// 만든 폴더를 열고 . 추가하고 현재 sector로 연결
+		&& dir_add(sub_dir = dir_open(sub_inode), ".", inode_sector)
+		// 만든 폴더에 .. 추가하고 이전 폴더의 sector로 연결
+		&& dir_add(sub_dir, "..", inode_get_inumber(dir_get_inode(prev_dir)))
+	);
+	if (!success && inode_sector != 0)
+		fat_remove_chain(inode_sector, 0);
+	inode_tag_dir(sub_inode);
+	// printf("inode is dir: subinode: %d\n", sub_inode->is_dir);
+	// printf("mkdir inode %p\n", sub_inode);
+	dir_close (prev_dir);
+	dir_close(sub_dir);
+	return success;
 }
 
-struct dir *get_prev_dir(const char *file_path) {
-	// printf("get prev dir file path: %s\n", file_path);
-
-	ASSERT(is_absolute_path(file_path));
+struct dir *get_prev_dir(const char *file_path, char *last_name) {
+	// printf("get prev dir filepath: %s\n", file_path);
+	char *cp_path = malloc(sizeof(char) * (strlen(file_path) + 1));
+	strlcpy(cp_path, file_path, (strlen(file_path) + 1) );
 	
-	// printf("is absolut\n");
-	char *copied_file_path = malloc(sizeof(char) * (strlen(file_path) + 1));
-	strlcpy(copied_file_path, file_path, (strlen(file_path) + 1) );
-	// printf("copied path: %s\n", copied_file_path);
 	char *token, *save_ptr, *prev_token;	
-	// token = strtok_r(copied_file_path, "/", &save_ptr);
-	// printf("copied_file_path: %s token: %s\n", copied_file_path,token);
-	struct dir *dir = dir_open_root(); // /
-	// printf("root dir: %p\n", dir);
+	struct dir *dir = NULL;
+	if (cp_path[0] == '/') {
+		// printf("get prev dir root dir open\n");
+		dir = dir_open_root();
+	}
+	else {
+		dir = dir_reopen(thread_current()->current_dir);
+	}
+	// printf("first get prev dir dir: %p\n", dir);
+	token = strtok_r(cp_path, "/", &save_ptr);
+	// printf("token: %s\n", token);
+	if (token == NULL) {
+		token = malloc(sizeof(char) * 2);
+		token[0] = '.';
+		token[1] = '\0';
+	}
+	// printf("token: %s, cppath: %s\n", token, cp_path);
 	struct inode *inode;
-	for (token = strtok_r(copied_file_path, "/", &save_ptr); ;){
-		/*	
-		/args-none
-		token = args-none
+	// token = strtok_r(cp_path, "/", &save_ptr)
+	for (; ;){
 
-		/a/b/c
-
-		a\0b/c
-		b\0c
-		
-		*/
 		prev_token = token;
 		token = strtok_r(NULL, "/", &save_ptr); // become b	| become c | become \0
-		
+		// printf("tokentoken: %s\n", token);
 		// 이전 것이 마지막
 		if (token == NULL) {
+			strlcpy(last_name, prev_token, strlen(prev_token) + 1);
 			return dir;
 		}
 
 		if (!dir_lookup(dir, prev_token, &inode)) {
-			free(copied_file_path);
+			free(cp_path);
 			return NULL;
 		}
-		ASSERT(inode_is_dir(inode));
+		// if (!inode_is_dir(inode)) {
+		// 	free(cp_path);
+		// }
 		dir_close(dir);
 		dir = dir_open(inode);
-
-
-
-
-		
-		// printf("TOKEN : %s\n", token);
-		// if (!dir_lookup(dir, token, &inode)) {
-		// 	printf("failed to lookup :%s\n",token);
-		// 	free(copied_file_path);
-		// 	return NULL; 	// inode는 a directory | b directory | inode는 c (file or directory)
-		// }
-		// token = strtok_r(NULL, "/", &save_ptr); // become b	| become c | become \0
-		
-		// if (token != NULL) {
-		// 	ASSERT(inode_is_dir(inode));
-		// 	dir_close(dir); // dir_close(/) | dir_close(a) | dir_close(b)
-		// 	dir = dir_open(inode); // a를 열어주기 | b를 열어주기
-		// }
-		// else {
-		// 	free(copied_file_path);
-		// 	return dir;
-		// }
 	}
 	NOT_REACHED();
-	
-
-	//   asd/rre
-	// ./		/a/b/c/  ./d/e/f     /a/b/c/d/e/f
-	// if (file_path[0] == '.' && file_path[1] == '/') {
-	// 	char *current_dir_path = thread_current()->current_dir;
-	// 	char *new_path = file_path + 2; 
-		
-	// 	char *concat_path = get_concat_path(current_dir_path, new_path);
-	// 	struct dir *ret_dir = get_prev_dir(concat_path);
-	// 	free(concat_path);
-	// 	return ret_dir;
-	// }
-          
-	// if (file_path[0] == '.' && file_path[1] == '.' && file_path[2] == '/') {
-	// 	char *current_dir_path = get_prev_dir(thread_current()->current_dir);
-	// 	char *new_path = file_path + 3; 
-		
-	// 	char *concat_path = get_concat_path(current_dir_path, new_path);
-		
-	// 	struct dir *ret_dir = get_prev_dir(concat_path);
-	// 	free(concat_path);
-	// 	return ret_dir;
-	// }
-	// printf("!!\n");
-	// char *current_dir_path = thread_current()->current_dir;
-	// printf("current dir path: %s\n", current_dir_path);
-	// char *concat_path = get_concat_path(current_dir_path, file_path);
-	// printf("concat path: %s\n", concat_path);
-	// struct dir *ret_dir = get_prev_dir(concat_path);
-	// free(concat_path);
-	// return ret_dir;
-
-	// return;
 }
 
-char *get_last_path(const char *file_path) {
-	// printf("get last path file path: %s\n", file_path);
-	
-	char *token, *save_ptr, *_token;
-	for (token = strtok_r(file_path, "/", &save_ptr); token != NULL; token = strtok_r(NULL, "/", &save_ptr))
-		_token = token;	
-	return _token;
-}
-
-
-char *get_concat_path(char *path1, char* path2) {
-	char *concat_path = malloc(sizeof(char) * (strlen(path1) + strlen(path2) + 1));
-	strlcpy(concat_path, path1, strlen(path1) + 1);
-	strlcat(concat_path, path2, strlen(path1) + strlen(path2) + 1);
-	return concat_path;
-} 
-
-char *path_pre_processing(char *file_path) {
-	if (is_absolute_path(file_path)) return file_path;
-	
-	if (file_path[0] == '.' && file_path[1] == '/') {
-		char *current_dir_path = thread_current()->current_dir;
-		char *new_path = file_path + 2; 
-		
-		char *concat_path = get_concat_path(current_dir_path, new_path);
-		// struct dir *ret_dir = get_prev_dir(concat_path);
-		// free(concat_path);
-		return concat_path;
+bool is_valid_directory(struct dir *prev_dir) {
+	struct inode *inode = dir_get_inode(prev_dir);
+	// if (!dir_lookup(prev_dir,last_name,&inode)) return false;
+	if (inode_is_dir(inode)) {
+		if (inode_is_removed(inode)) return false;
 	}
-          
-	if (file_path[0] == '.' && file_path[1] == '.' && file_path[2] == '/') {
-		char *current_dir_path = get_prev_dir(thread_current()->current_dir);
-		char *new_path = file_path + 3; 
-		
-		char *concat_path = get_concat_path(current_dir_path, new_path);
-		
-		// struct dir *ret_dir = get_prev_dir(concat_path);
-		// free(concat_path);
-		return concat_path;
-	}
-	// printf("!!\n");
-	char *current_dir_path = thread_current()->current_dir;
-	// printf("current dir path: %s\n", current_dir_path);
-	char *concat_path = get_concat_path(current_dir_path, file_path);
-	// printf("concat path: %s\n", concat_path);
-	// struct dir *ret_dir = get_prev_dir(concat_path);
-	// free(concat_path);
-	return concat_path;
+	return true;
 }
-
-// struct dir *
-// find_target_dir(struct dir *root_dir, const char *name) {
-// 	// example
-// 	// /home/music/pop/abc.mp3
-// 	// pop까지만 열기
-	
-// 	// /home/music/pop/korea
-// 	// korea도 열어줘야함
-
-// 	// 즉 마지막 parsed name이 dir인지 file인지 확인해야함
-
-// 	// name => home
-// 	char *parsed_name;
-// 	// first, in root / find home dir
-	
-// 	struct inode *dir_inode;
-// 	if (!dir_lookup(root_dir, parsed_name, &dir_inode)) {
-// 		return NULL;
-// 	}
-
-
-// }

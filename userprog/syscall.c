@@ -14,6 +14,7 @@
 #include "filesys/filesys.h"
 #include "lib/string.h"
 #include "filesys/inode.h"
+#include "filesys/directory.h"
 // for vm user addition
 #include "vm/vm.h"
 //
@@ -38,9 +39,9 @@ unsigned syscall_tell(int fd);
 void	 syscall_close(int fd);
 void*	 syscall_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
 void 	 syscall_munmap(void *addr);
-// bool 	 syscall_chdir(const char *dir);
-// bool     syscall_mkdir(const char *dir);
-// bool     syscall_readdir(int fd, char *name);
+bool 	 syscall_chdir(const char *dir);
+bool     syscall_mkdir(const char *dir);
+bool     syscall_readdir(int fd, char *name);
 bool     syscall_isdir(int fd);
 int      syscall_inumber(int fd);
 // int		 syscall_symlink(const char* target, const char* linkpath);
@@ -153,15 +154,15 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_MUNMAP:
 			syscall_munmap(f->R.rdi);
 			break;
-		// case SYS_CHDIR:
-		// 	f->R.rax = syscall_chdir(f->R.rdi);
-		// 	break;
-		// case SYS_MKDIR:
-		// 	f->R.rax = syscall_mkdir(f->R.rdi);
-		// 	break;
-		// case SYS_READDIR:
-		// 	f->R.rax = syscall_readdir(f->R.rdi, f->R.rsi);
-		// 	break;
+		case SYS_CHDIR:
+			f->R.rax = syscall_chdir(f->R.rdi);
+			break;
+		case SYS_MKDIR:
+			f->R.rax = syscall_mkdir(f->R.rdi);
+			break;
+		case SYS_READDIR:
+			f->R.rax = syscall_readdir(f->R.rdi, f->R.rsi);
+			break;
 		case SYS_ISDIR:
 			f->R.rax = syscall_isdir(f->R.rdi);
 			break;
@@ -337,10 +338,14 @@ int syscall_write(int fd, const void *buffer, unsigned size)
 		write_result = size;
 	}
 	else
-	{
-		if(find_file_by_fd(fd) != NULL)
-			write_result = file_write(find_file_by_fd(fd),buffer,size);
-			
+	{	
+		struct file *file;
+		if((file = find_file_by_fd(fd)) != NULL) {
+			if (!inode_is_dir(file->inode))
+				write_result = file_write(file, buffer,size);
+			else
+				write_result = -1;
+		}
 		else
 			write_result = -1;
 	}
@@ -466,19 +471,66 @@ void syscall_munmap(void *addr)
 	do_munmap(addr);
 }
 
-// bool syscall_chdir(const char *dir)
-// {
-// 	struct thread *curr = thread_current();
-// 	curr->current_dir
-// }
-// bool syscall_mkdir(const char *dir)
-// {
+bool syscall_chdir(const char *path_dir)
+{	
+	if (path_dir == NULL) return false;
 
-// }
-// bool syscall_readdir(int fd, char *name)
-// {
+	char *cp_path = malloc(sizeof(char) * (strlen(path_dir) + 1));
+	strlcpy(cp_path, path_dir, strlen(path_dir) + 1);
 
-// }
+	struct dir *dir = NULL;
+
+	// for absolute path
+	if (cp_path[0] == '/') {
+		dir = dir_open_root();
+	}
+	else {
+		dir = dir_reopen(thread_current()->current_dir);
+	}
+
+	char *token, *save_ptr;
+	struct inode *inode = NULL;
+	for (token = strtok_r(cp_path, "/", &save_ptr); token != NULL; 
+		 token = strtok_r(NULL, "/", &save_ptr)) {
+			
+			// dir에 token 이름의 ~가 없으면 실패
+			if (!dir_lookup(dir, token, &inode)) {
+				dir_close(dir);
+				// printf("lookup false\n");
+				return false;
+			}
+			// token 이름의 ~가 dir가 아니면 실패
+			if (!inode_is_dir(inode)) {
+				dir_close(dir);
+				
+				// printf("isdir inode:%p false, %d\n", inode, inode_is_dir(inode));
+				return false;
+			}
+			// 현재 dir 닫고 inode가 가리키는 dir로 이동
+			dir_close(dir);
+			dir = dir_open(inode);
+		}
+	// printf("current: %p after: %p\n", thread_current()->current_dir, dir);	
+	dir_close(thread_current()->current_dir);
+	thread_current()->current_dir = dir;
+	free(cp_path);
+	return true;
+
+}
+bool syscall_mkdir(const char *path_dir)
+{	
+	return filesys_create_dir(path_dir);
+}
+bool syscall_readdir(int fd, char *name)
+{	printf("readdir fd: %d\n", fd);
+	struct file *file = find_file_by_fd(fd);
+	ASSERT(file != NULL);
+	if(!inode_is_dir(file->inode)) return false;
+
+	struct dir *dir = malloc(dir_size()); 
+	memcpy(dir, file, dir_size());
+	return dir_readdir(dir, name);
+}
 bool syscall_isdir(int fd)
 {
 	struct file *file = find_file_by_fd(fd);
@@ -496,10 +548,11 @@ int syscall_inumber(int fd)
 
 	return inode_get_inumber(file->inode);
 } 
-// int syscall_symlink(const char* target, const char* linkpath)
-// {
-
-// }
+int syscall_symlink(const char* target, const char* linkpath)
+{
+	printf("SYMBOLIC LINK\n");
+	return -1;
+}
 
 void is_valid_addr(const uint64_t *addr)	
 {

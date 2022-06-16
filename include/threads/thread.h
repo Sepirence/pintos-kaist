@@ -120,7 +120,7 @@ struct thread {
 	struct file *load_file;
 
 	
-#ifdef USERPROG
+// #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
 
@@ -145,20 +145,20 @@ struct thread {
 	///
 	///
 
-#endif
-#ifdef VM
+// #endif
+// #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 	void* stack_bottom;
 	void* stack_rsp;
-#endif
+// #endif
 
-#ifdef EFILESYS
-	// struct dir *current_dir;
+// #ifdef EFILESYS
+	struct dir *current_dir;
 	// char *current_dir;
 	// char *previous_dir;
-	char current_dir[50];
-#endif
+	// char current_dir[50];
+// #endif
 
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */

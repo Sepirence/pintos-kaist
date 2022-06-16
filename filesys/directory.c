@@ -6,6 +6,7 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 #include "filesys/fat.h"
+#include "threads/thread.h"
 /* A directory. */
 struct dir {
 	struct inode *inode;                /* Backing store. */
@@ -28,21 +29,26 @@ struct dir_entry {
  * given SECTOR.  Returns true if successful, false on failure. */
 bool
 dir_create (disk_sector_t sector, size_t entry_cnt) {
-	// printf("\ndir create sector: %d entr y cnt: %d dir entry size:%d\n", sector, entry_cnt, sizeof(struct dir_entry));
-	if (sector == ROOT_DIR_SECTOR)
+	// printf("\ndir create sector: %d entry cnt: %d dir entry cnt:%d\n", sector, entry_cnt, sizeof(struct dir_entry));
+	if (sector == ROOT_DIR_SECTOR){
 		sector = cluster_to_sector(sector);
-	return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+	}
+	bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry), true);
+	// dir_open
+	return success;
 }
 
 /* Opens and returns the directory for the given INODE, of which
  * it takes ownership.  Returns a null pointer on failure. */
 struct dir *
 dir_open (struct inode *inode) {
+	// printf("dir open: %p\n", inode);
 	struct dir *dir = calloc (1, sizeof *dir);
 	if (inode != NULL && dir != NULL) {
-		inode_tag_dir(inode);
+		// inode_tag_dir(inode);
 		dir->inode = inode;
 		dir->pos = 0;
+		// dir->is_removed = false;
 		return dir;
 	} else {
 		inode_close (inode);
@@ -69,7 +75,7 @@ dir_reopen (struct dir *dir) {
 /* Destroys DIR and frees associated resources. */
 void
 dir_close (struct dir *dir) {
-	// printf("dir close %p\n", dir->inode);
+	// printf("dir close dir: %p inode: %p\n",dir , dir->inode);
 	if (dir != NULL) {
 		inode_close (dir->inode);
 		free (dir);
@@ -140,7 +146,7 @@ dir_lookup (const struct dir *dir, const char *name,
  * error occurs. */
 bool
 dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector) {
-	// printf("dir add name: %s\n", name);
+	// printf("dir add dir : %p name: %s\n", dir,name);
 	struct dir_entry e;
 	off_t ofs;
 	bool success = false;
@@ -185,7 +191,7 @@ done:
  * which occurs only if there is no file with the given NAME. */
 bool
 dir_remove (struct dir *dir, const char *name) {
-	// printf("dir remove: %s\n", name);
+	// printf("dir remove: %s dir inode: %p\n", name, dir_get_inode(dir));
 	struct dir_entry e;
 	struct inode *inode = NULL;
 	bool success = false;
@@ -211,7 +217,7 @@ dir_remove (struct dir *dir, const char *name) {
 	/* Remove inode. */
 	inode_remove (inode);
 	success = true;
-
+	// dir->is_removed = true;
 done:
 	inode_close (inode);
 	return success;
@@ -227,9 +233,14 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1]) {
 	while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) {
 		dir->pos += sizeof e;
 		if (e.in_use) {
+			if (strcmp(e.name, ".") == 0  || strcmp(e.name, "..") == 0) continue;
 			strlcpy (name, e.name, NAME_MAX + 1);
 			return true;
 		}
 	}
 	return false;
+}
+
+size_t dir_size() {
+	return sizeof(struct dir);
 }

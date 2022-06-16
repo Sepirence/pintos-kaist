@@ -18,8 +18,9 @@
 struct inode_disk {
 	disk_sector_t start;                /* First data sector. */
 	off_t length;                       /* File size in bytes. */
+	bool is_dir;
 	unsigned magic;                     /* Magic number. */
-	uint32_t unused[125];               /* Not used. */
+	uint32_t unused[124];               /* Not used. */
 };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -38,6 +39,7 @@ struct inode {
 	int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
 	// user addition
 	bool is_dir;
+	// bool is_dir_removed;
 	//
 	struct inode_disk data;             /* Inode content. */
 };
@@ -107,7 +109,7 @@ inode_init (void) {
  * Returns true if successful.
  * Returns false if memory or disk allocation fails. */
 bool
-inode_create (disk_sector_t sector, off_t length) {
+inode_create (disk_sector_t sector, off_t length, bool is_dir) {
 	struct inode_disk *disk_inode = NULL;
 	bool success = false;
 
@@ -124,7 +126,7 @@ inode_create (disk_sector_t sector, off_t length) {
 		size_t sectors = bytes_to_sectors (length);
 		disk_inode->length = length;
 		disk_inode->magic = INODE_MAGIC; 
-
+		disk_inode->is_dir = is_dir;
 		// allocate sectors for data
 		if (fat_allocate (sectors, &disk_inode->start)) {
 			// disk_inode->start become first data cluster number
@@ -169,7 +171,7 @@ inode_create (disk_sector_t sector, off_t length) {
  * Returns a null pointer if memory allocation fails. */
 struct inode *
 inode_open (disk_sector_t sector) {
-
+	// printf("inode open: sector %d\n", sector);
 	struct list_elem *e;
 	struct inode *inode;
 	
@@ -196,8 +198,9 @@ inode_open (disk_sector_t sector) {
 	inode->open_cnt = 1;
 	inode->deny_write_cnt = 0;
 	inode->removed = false;
-	inode->is_dir = false;
 	disk_read (filesys_disk, inode->sector, &inode->data);
+	inode->is_dir = inode->data.is_dir;
+
 	return inode;
 }
 
@@ -220,7 +223,7 @@ inode_get_inumber (const struct inode *inode) {
  * If INODE was also a removed inode, frees its blocks. */
 void
 inode_close (struct inode *inode) {
-
+	// printf("inode close %p\n", inode);
 	/* Ignore null pointer. */
 	if (inode == NULL)
 		return;
@@ -230,6 +233,7 @@ inode_close (struct inode *inode) {
 		/* Remove from inode list and release lock. */
 		list_remove (&inode->elem);
 		disk_write(filesys_disk, inode->sector, &inode->data);
+		// printf("closeclose inode: %p sector: %d\n", inode, inode->sector);
 		/* Deallocate blocks if removed. */
 		if (inode->removed) {
 			// inode					inode->sector = inode disk's location in disk
@@ -256,7 +260,7 @@ inode_remove (struct inode *inode) {
  * than SIZE if an error occurs or end of file is reached. */
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) {
-	
+	// printf("inode: %p, size: %d offset: %d\n", inode, size, offset);
 	uint8_t *buffer = buffer_;
 	off_t bytes_read = 0;
 	uint8_t *bounce = NULL;
@@ -312,7 +316,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) {
 off_t
 inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 		off_t offset) {
-
+		// printf("inode write: %p, size: %d offset: %d sector: %d data length: %d\n", inode, size, offset, inode->sector, inode->data.length);
+	// if (inode_is_dir(inode)) return -1;
 	const uint8_t *buffer = buffer_;
 	off_t bytes_written = 0;
 	uint8_t *bounce = NULL;
@@ -401,6 +406,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 		bytes_written += chunk_size;
 	}
 	free (bounce);
+	// printf("bytes written: %d\n", bytes_written);
 	return bytes_written;
 }
 
@@ -435,4 +441,8 @@ bool inode_is_dir(const struct inode *inode) {
 
 void inode_tag_dir(struct inode *inode) {
 	inode->is_dir = true;
+}
+
+bool inode_is_removed(const struct inode *inode){
+	return inode->removed;
 }
