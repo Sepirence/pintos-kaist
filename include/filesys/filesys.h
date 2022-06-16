@@ -18,12 +18,9 @@ struct file *filesys_open (const char *name);
 bool filesys_remove (const char *name);
 
 bool filesys_create_dir(const char *name);
-
+struct inode *get_symlink_inode(struct inode *inode);
 // bool is_absolute_path(const char *path);
 struct dir *get_prev_dir(const char *file_path, char *last_name);
 bool is_valid_directory(struct dir *prev_dir);
-// char *get_last_path(const char *file_path);
-// char *get_concat_path(char *path1, char* path2);
-// char *path_pre_processing(char *file_path);
-// char *get_prev_dir_name();
+int filesys_symlink(const char* target, const char* linkpath);
 #endif /* filesys/filesys.h */

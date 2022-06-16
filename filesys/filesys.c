@@ -15,6 +15,11 @@ struct disk *filesys_disk;
 
 static void do_format (void);
 
+struct container {
+	off_t path_length;
+	struct dir *dir;
+};
+
 /* Initializes the file system module.
  * If FORMAT is true, reformats the file system. */
 void
@@ -122,12 +127,15 @@ filesys_create (const char *name, off_t initial_size) {
  * or if an internal memory allocation fails. */
 struct file *
 filesys_open (const char *name) {
+	if (strlen(name) == 0)
+		return NULL;
+	// printf("filesys open1\n");
 	// printf("filesys open %s in thread: %s\n", name, thread_name());
 	// printf("curr dir: %p\n", thread_current()->current_dir);
 	// case 1: /a/b/c 
 	// case 2: c (/a/b)
 	// printf("filesys open name: %s\n", name);
-	// if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return NULL;
+	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return NULL;
 	// printf("filesys open2\n");
 	if (strcmp(name, "/") == 0) {
 		struct dir *root_dir = dir_open_root();
@@ -139,9 +147,9 @@ filesys_open (const char *name) {
 
 	char *last_name = malloc(sizeof(char) * (strlen(name) + 1));
 	struct dir *prev_dir = get_prev_dir(name, last_name);
-	
-	// printf("filesys open: prev dir: %p name: %s lastname: %s\n", prev_dir,name, last_name);
-	printf("filesys open: last name: %s\n", last_name);
+	// printf("filesys open4 prev dir inode: %p\n", dir_get_inode(prev_dir));
+	// printf("filesys open: prev dir: %p name: %s lastname: %s\n", dir_get_inode(prev_dir),name, last_name);
+	// printf("filesys open: last name: %s\n", last_name);
 	// if (strcmp(last_name, ".") == 0 || strcmp(last_name, "..") == 0) {
 	// 	free(last_name);
 	// 	return false;
@@ -155,14 +163,23 @@ filesys_open (const char *name) {
 	// printf("%s\n", last_path);
 
 	// if(dir_lookup(dir, last_path, &inode)){}
-
+	// printf("filesys open5\n");
 	if (prev_dir != NULL)
 		dir_lookup (prev_dir, last_name, &inode);
 	// dir_close(dir);
+
+	// printf("filesys open6 %p\n", inode);
+
 	dir_close (prev_dir);
+	// printf("filesys open7\n");
 	free(last_name);
-	// printf("filesys open end\n");
-	return file_open (inode);
+	// printf("filesys open end1 %d\n", inode_is_symlink(inode));
+	if (!inode_is_symlink(inode))
+		return file_open (inode);
+	// printf("filesys open end2\n");
+	// printf("filesys open8\n");
+	struct inode *symlink_inode = get_symlink_inode(inode);
+	return file_open(symlink_inode);
 }
 
 /* Deletes the file named NAME.
@@ -171,6 +188,8 @@ filesys_open (const char *name) {
  * or if an internal memory allocation fails. */
 bool
 filesys_remove (const char *name) {
+	if (strlen(name) == 0)
+		return false;
 	// printf("filesys remove current dir inode: %p name: %s\n", dir_get_inode(thread_current()->current_dir), name);
 	// struct dir *dir = dir_open_root ();
 	// struct dir *root_dir = dir_open_root ();
@@ -222,6 +241,10 @@ do_format (void) {
 	fat_create ();
 	if (!dir_create (ROOT_DIR_SECTOR, 16))
 		PANIC ("root directory creation failed");
+	struct dir *root_dir = dir_open_root();
+	dir_add(root_dir, ".", cluster_to_sector(ROOT_DIR_SECTOR));
+	dir_add(root_dir, "..", cluster_to_sector(ROOT_DIR_SECTOR));
+	dir_close(root_dir);
 	fat_close ();
 #else
 	free_map_create ();
@@ -292,7 +315,7 @@ bool filesys_create_dir(const char *name) {
 }
 
 struct dir *get_prev_dir(const char *file_path, char *last_name) {
-	// printf("get prev dir filepath: %s\n", file_path);
+	// printf("get prev dir first filepath: %s\n", file_path);
 	char *cp_path = malloc(sizeof(char) * (strlen(file_path) + 1));
 	strlcpy(cp_path, file_path, (strlen(file_path) + 1) );
 	
@@ -305,7 +328,7 @@ struct dir *get_prev_dir(const char *file_path, char *last_name) {
 	else {
 		dir = dir_reopen(thread_current()->current_dir);
 	}
-	// printf("first get prev dir dir: %p\n", dir);
+	// printf("first get prev dir dir: %p inode: %p\n", dir, dir_get_inode(dir));
 	token = strtok_r(cp_path, "/", &save_ptr);
 	// printf("token: %s\n", token);
 	if (token == NULL) {
@@ -320,7 +343,7 @@ struct dir *get_prev_dir(const char *file_path, char *last_name) {
 
 		prev_token = token;
 		token = strtok_r(NULL, "/", &save_ptr); // become b	| become c | become \0
-		// printf("tokentoken: %s\n", token);
+		// printf("prevtoken %s 	token: %s\n", prev_token,token);
 		// 이전 것이 마지막
 		if (token == NULL) {
 			strlcpy(last_name, prev_token, strlen(prev_token) + 1);
@@ -331,11 +354,29 @@ struct dir *get_prev_dir(const char *file_path, char *last_name) {
 			free(cp_path);
 			return NULL;
 		}
+		// printf("prev dir lookup inode: %p\n", inode);
 		// if (!inode_is_dir(inode)) {
 		// 	free(cp_path);
 		// }
+		// printf("inodeissymlink: %d\n", inode_is_symlink(inode));
+		// struct inode *re_inode = inode_reopen(inode);
+		// struct file *file = file_open(inode);
+		// inode = file_get_inode(file);
+		if (inode_is_symlink(inode)) {
+			struct inode *symlink_inode = get_symlink_inode(inode);
+			if (!inode_is_dir(symlink_inode)) {	
+				free(cp_path);
+				return NULL;
+			}
+			inode = symlink_inode;
+		}
+		// if (!inode_is_dir(inode)) {
+		// 	free(cp_path);
+		// }
+		// inode_close(re_inode);
 		dir_close(dir);
 		dir = dir_open(inode);
+		// file_close(file);
 	}
 	NOT_REACHED();
 }
@@ -347,4 +388,78 @@ bool is_valid_directory(struct dir *prev_dir) {
 		if (inode_is_removed(inode)) return false;
 	}
 	return true;
+}
+
+
+int filesys_symlink(const char* target, const char* linkpath) {
+	// printf("1 %s %s\n",target, linkpath);
+	if (strcmp(target, ".") == 0 || strcmp(target, "..") == 0) return -1;
+
+	char *target_last_name = malloc(sizeof(char) * (strlen(target) + 1));
+	struct dir *target_prev_dir = get_prev_dir(target, target_last_name);
+	// printf("symlimk에서 prev dir %p\n", target_prev_dir);
+	struct inode *target_inode = NULL;
+	// if (!dir_lookup (target_prev_dir, target_last_name, &target_inode)) {
+	// 	free(target_last_name);
+	// 	return -1;
+	// }
+	// printf("2 target_last_name: %s\n",target_last_name);
+
+	struct container *symlink_container = malloc(sizeof(struct container));
+	
+	symlink_container->path_length = strlen(target) + 1;
+	symlink_container->dir = target_prev_dir;
+	// symlink_container->path_name = malloc(sizeof(char) * (strlen(target_last_name) + 1));
+	// strlcpy(symlink_container->path_name, target_last_name, (strlen(target_last_name) + 1));
+
+	if (!filesys_create(linkpath, sizeof(struct container) + (strlen(target_last_name) + 1))) {
+		free(target_last_name);
+		return -1;
+	}
+	
+	struct file *link_path_file = filesys_open(linkpath);
+
+	if (link_path_file == NULL) {
+		free(target_last_name);
+		return -1;
+	}
+
+	if (file_write(link_path_file, symlink_container, sizeof(struct container)) != (sizeof(struct container))) {
+		free(target_last_name);
+		file_close(link_path_file);
+		return -1;
+	}
+	
+	if (file_write(link_path_file, target_last_name, (strlen(target_last_name) + 1)) != (strlen(target_last_name) + 1)) {
+		free(target_last_name);
+		file_close(link_path_file);
+		return -1;
+	}
+
+	struct inode *link_path_inode = file_get_inode(link_path_file);
+	ASSERT(link_path_inode != NULL);
+	// printf("TAG BEFORE link_path_inode : %p\n",link_path_inode);
+	inode_tag_sym_link(link_path_inode);
+	// printf("TAG DONE %d\n", inode_is_symlink(link_path_inode));
+	free(target_last_name);
+	free(symlink_container);
+	// file_close(link_path_file);
+	return 0;
+}
+
+struct inode *get_symlink_inode(struct inode *inode){
+	struct file *symlink_file = file_open(inode);
+	struct container *symlink_container = malloc(sizeof(struct container));
+	file_read(symlink_file, symlink_container, sizeof(struct container));
+	char *last_path = malloc(sizeof(char) * (symlink_container->path_length));
+	file_read(symlink_file, last_path, symlink_container->path_length);
+	file_close(symlink_file);
+	struct inode *symlink_inode;	
+	struct dir *curr_dir = dir_reopen(symlink_container->dir);
+	free(symlink_container);
+	if (curr_dir != NULL)
+		dir_lookup (curr_dir, last_path, &symlink_inode);
+	dir_close (curr_dir);
+	free(last_path);
+	return symlink_inode;
 }

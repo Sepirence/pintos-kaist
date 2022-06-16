@@ -22,4 +22,6 @@ off_t inode_length (const struct inode *);
 bool inode_is_dir(const struct inode *inode);
 void inode_tag_dir(struct inode *inode);
 bool inode_is_removed(const struct inode *inode);
+void inode_tag_sym_link(struct inode *target_inode);
+bool inode_is_symlink(const struct inode *inode);
 #endif /* filesys/inode.h */

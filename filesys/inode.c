@@ -40,6 +40,7 @@ struct inode {
 	// user addition
 	bool is_dir;
 	// bool is_dir_removed;
+	bool is_symlink;
 	//
 	struct inode_disk data;             /* Inode content. */
 };
@@ -200,7 +201,7 @@ inode_open (disk_sector_t sector) {
 	inode->removed = false;
 	disk_read (filesys_disk, inode->sector, &inode->data);
 	inode->is_dir = inode->data.is_dir;
-
+	inode->is_symlink = false;
 	return inode;
 }
 
@@ -445,4 +446,12 @@ void inode_tag_dir(struct inode *inode) {
 
 bool inode_is_removed(const struct inode *inode){
 	return inode->removed;
+}
+
+void inode_tag_sym_link(struct inode *inode) {
+	inode->is_symlink = true;
+}
+
+bool inode_is_symlink(const struct inode *inode){
+	return inode->is_symlink;
 }

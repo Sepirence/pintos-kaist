@@ -128,11 +128,11 @@ fat_create (void) {
 	fat_put (ROOT_DIR_CLUSTER, EOChain);
 
 	// Fill up ROOT_DIR_CLUSTER region with 0
-	uint8_t *buf = calloc (1, DISK_SECTOR_SIZE);
-	if (buf == NULL)
-		PANIC ("FAT create failed due to OOM");
-	disk_write (filesys_disk, cluster_to_sector (ROOT_DIR_CLUSTER), buf);
-	free (buf);
+	// uint8_t *buf = calloc (1, DISK_SECTOR_SIZE);
+	// if (buf == NULL)
+	// 	PANIC ("FAT create failed due to OOM");
+	// disk_write (filesys_disk, cluster_to_sector (ROOT_DIR_CLUSTER), buf);
+	// free (buf);
 }
 
 void

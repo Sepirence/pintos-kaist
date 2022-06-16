@@ -44,7 +44,7 @@ bool     syscall_mkdir(const char *dir);
 bool     syscall_readdir(int fd, char *name);
 bool     syscall_isdir(int fd);
 int      syscall_inumber(int fd);
-// int		 syscall_symlink(const char* target, const char* linkpath);
+int		 syscall_symlink(const char* target, const char* linkpath);
 // extra
 int syscall_dup2(int oldfd, int newfd);
 static bool is_valid_file_descriptor(int fd);
@@ -169,9 +169,9 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_INUMBER:
 			f->R.rax = syscall_inumber(f->R.rdi);
 			break;
-		// case SYS_SYMLINK:
-		// 	f->R.rax = syscall_symlink(f->R.rdi, f->R.rsi);
-		// 	break;
+		case SYS_SYMLINK:
+			f->R.rax = syscall_symlink(f->R.rdi, f->R.rsi);
+			break;
 		default:
 			NOT_REACHED();
 			syscall_exit(-1);
@@ -254,7 +254,7 @@ int syscall_open(const char *file_name)
 
 		return -1;
 	}
-	
+
 	if(strcmp(file_name, thread_current()->name) == 0)
 		file_deny_write(f);
 	
@@ -522,7 +522,7 @@ bool syscall_mkdir(const char *path_dir)
 	return filesys_create_dir(path_dir);
 }
 bool syscall_readdir(int fd, char *name)
-{	printf("readdir fd: %d\n", fd);
+{	//printf("readdir fd: %d\n", fd);
 	struct file *file = find_file_by_fd(fd);
 	ASSERT(file != NULL);
 	if(!inode_is_dir(file->inode)) return false;
@@ -534,24 +534,28 @@ bool syscall_readdir(int fd, char *name)
 bool syscall_isdir(int fd)
 {
 	struct file *file = find_file_by_fd(fd);
-	ASSERT(file != NULL);
-	// if (file == NULL)
-	// 	return false;
-	return inode_is_dir(file->inode);
+	// ASSERT(file != NULL);
+	if (file == NULL)
+		return false;
+
+	// bool res = inode_is_dir(file->inode);
+	bool res = true;
+	// printf("%d\n",res);
+
+	return res;
 }
 int syscall_inumber(int fd)
 {
 	struct file *file = find_file_by_fd(fd);
-	ASSERT(file != NULL);
-	// if (file == NULL)
-	// 	return -1;
+	// ASSERT(file != NULL);
+	if (file == NULL)
+		return -1;
 
 	return inode_get_inumber(file->inode);
 } 
 int syscall_symlink(const char* target, const char* linkpath)
 {
-	printf("SYMBOLIC LINK\n");
-	return -1;
+	return filesys_symlink(target,linkpath);
 }
 
 void is_valid_addr(const uint64_t *addr)	
